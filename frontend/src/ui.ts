@@ -49,26 +49,24 @@ function buildSimplexTable(activeN: number, activeT: number): HTMLElement {
   const tVals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
   const wrap = document.createElement("div");
-  wrap.style.cssText = "overflow-x:auto;margin:2px 0 4px;";
+  wrap.style.overflowX = "auto";
 
   const tbl = document.createElement("table");
-  tbl.style.cssText = "border-collapse:collapse;font-size:10px;white-space:nowrap;";
+  tbl.className = "simplex-tbl";
+
+  const cell = (text: string, ...classes: string[]): HTMLElement => {
+    const td = document.createElement("td");
+    td.textContent = text;
+    td.className = classes.filter(Boolean).join(" ");
+    return td;
+  };
 
   // Header row: T values
   const hrow = document.createElement("tr");
-  const corner = document.createElement("td");
-  corner.style.cssText = "padding:1px 4px 1px 2px;color:#bbb;";
-  corner.textContent = "n\\T";
-  hrow.appendChild(corner);
+  hrow.appendChild(cell("n\\T"));
   for (const t of tVals) {
-    const th = document.createElement("td");
-    const isActiveCol = t === activeT;
-    th.style.cssText = `padding:1px 4px;text-align:right;`
-      + `color:${isActiveCol ? "#444" : "#bbb"};`
-      + `font-weight:${isActiveCol ? "bold" : "normal"};`
-      + (isActiveCol ? "background:#eef3ff;" : "");
-    th.textContent = String(t);
-    hrow.appendChild(th);
+    const on = t === activeT;
+    hrow.appendChild(cell(String(t), "head", on ? "hl" : ""));
   }
   tbl.appendChild(hrow);
 
@@ -76,26 +74,17 @@ function buildSimplexTable(activeN: number, activeT: number): HTMLElement {
   for (const n of nVals) {
     const tr = document.createElement("tr");
     const isActiveRow = n === activeN;
-    const tdLabel = document.createElement("td");
-    tdLabel.style.cssText = `padding:1px 4px 1px 2px;`
-      + `color:${isActiveRow ? "#444" : "#bbb"};`
-      + `font-weight:${isActiveRow ? "bold" : "normal"};`
-      + (isActiveRow ? "background:#eef3ff;" : "");
-    tdLabel.textContent = String(n);
-    tr.appendChild(tdLabel);
+    tr.appendChild(cell(String(n), "head", isActiveRow ? "hl" : ""));
 
     for (const t of tVals) {
       const count = simplexGridSize(n, t);
       const isCurrent = isActiveRow && t === activeT;
       const overCap = count > MAX_SWEEP_SAMPLES;
-      const dimmed = !isActiveRow && t !== activeT;
-      const td = document.createElement("td");
-      td.style.cssText = `padding:1px 4px;text-align:right;`
-        + `font-weight:${isCurrent ? "bold" : "normal"};`
-        + `background:${isCurrent ? "#d8e6ff" : (isActiveRow || t === activeT ? "#f4f7ff" : "")};`
-        + `color:${overCap ? "#c44" : (dimmed ? "#ddd" : "#333")};`;
-      td.textContent = overCap ? `${count}↑` : String(count);
-      tr.appendChild(td);
+      tr.appendChild(cell(
+        overCap ? `${count}↑` : String(count),
+        isCurrent ? "cur" : (isActiveRow || t === activeT ? "hl" : ""),
+        overCap && !isCurrent ? "over" : "",
+      ));
     }
     tbl.appendChild(tr);
   }
@@ -131,7 +120,11 @@ async function refreshScenes(): Promise<void> {
 }
 
 function render(): void {
-  panel().innerHTML = "";
+  panel().innerHTML = `
+    <header class="masthead">
+      <h1>LandSimplex</h1>
+      <p>Weight-space sensitivity analysis for raster-based landscape suitability.</p>
+    </header>`;
   panel().appendChild(tabBar());
   if (state.currentTab === "rasters") {
     panel().appendChild(uploadSection());
@@ -145,7 +138,7 @@ function render(): void {
 
 function tabBar(): HTMLElement {
   const bar = document.createElement("div");
-  bar.style.cssText = "display:flex;gap:4px;margin-bottom:8px;";
+  bar.className = "tabs";
   const tabs = [
     { id: "rasters", label: "Raster" },
     { id: "scenes", label: "Scene Bundle" },
@@ -153,7 +146,7 @@ function tabBar(): HTMLElement {
   for (const t of tabs) {
     const btn = document.createElement("button");
     btn.textContent = t.label;
-    btn.style.cssText = `flex:1;padding:4px 0;cursor:pointer;${state.currentTab === t.id ? "font-weight:bold;border-bottom:2px solid #4a90d9;" : ""}`;
+    btn.className = state.currentTab === t.id ? "active" : "";
     btn.onclick = () => { state.currentTab = t.id; render(); };
     bar.appendChild(btn);
   }
@@ -167,7 +160,7 @@ function uploadSection(): HTMLElement {
     <div class="upload">
       <input type="file" id="upload-input" accept=".tif,.tiff" />
       <button id="upload-btn">Upload</button>
-      <div id="upload-status" style="font-size: 12px; color: #888; margin-top: 4px;"></div>
+      <div id="upload-status" class="status"></div>
     </div>
   `;
   const input = el.querySelector<HTMLInputElement>("#upload-input")!;
@@ -207,8 +200,8 @@ function rasterListSection(): HTMLElement {
       <div class="layer-toggle">
         <input type="checkbox" ${active ? "checked" : ""} data-rid="${r.id}" />
         <strong>${r.name}</strong>
-        <span style="margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: ${r.kind === "result" ? "#fce4a4" : "#cce3fc"};">${r.kind}</span>
-        <button class="delete-btn" title="Delete layer" style="margin-left:6px;padding:1px 6px;font-size:11px;color:#c00;background:transparent;border:1px solid #c00;border-radius:4px;cursor:pointer;line-height:1.4;">✕</button>
+        <span class="tag ${r.kind}">${r.kind}</span>
+        <button class="delete-btn icon-btn" title="Delete layer">✕</button>
       </div>
       <div class="meta">${r.crs} · ${r.width}×${r.height} · ${r.dtype}</div>
     `;
@@ -274,7 +267,7 @@ function sceneBundleSection(): HTMLElement {
   uploadDiv.innerHTML = `
     <input type="file" id="scene-input" accept=".zip,.tar.gz" />
     <button id="scene-btn">Upload</button>
-    <div id="scene-status" style="font-size:12px;color:#888;margin-top:4px;"></div>
+    <div id="scene-status" class="status"></div>
   `;
   el.appendChild(uploadDiv);
 
@@ -309,7 +302,6 @@ function sceneBundleSection(): HTMLElement {
   if (state.scenes.length > 0) {
     const heading = document.createElement("h3");
     heading.textContent = "Imported scenes";
-    heading.style.margin = "12px 0 4px";
     el.appendChild(heading);
 
     for (const scene of state.scenes) {
@@ -322,18 +314,17 @@ function sceneBundleSection(): HTMLElement {
 
 function sceneCard(scene: Scene): HTMLElement {
   const card = document.createElement("div");
-  card.style.cssText = "border:1px solid #ddd;border-radius:4px;padding:6px;margin-bottom:8px;";
+  card.className = "scene-card";
   card.innerHTML = `
-    <div style="font-weight:bold;font-size:12px;">${scene.scene_id}</div>
-    <div style="font-size:11px;color:#666;">${scene.sensor} · ${scene.acquired_at ?? "unknown date"}</div>
+    <div class="t">${scene.scene_id}</div>
+    <div class="s">${scene.sensor} · ${scene.acquired_at ?? "unknown date"}</div>
   `;
 
   const table = document.createElement("table");
-  table.style.cssText = "width:100%;font-size:11px;border-collapse:collapse;margin-top:4px;";
   table.innerHTML = `<thead><tr>
-    <th style="text-align:left;padding:2px 4px;">Band</th>
-    <th style="text-align:left;padding:2px 4px;">Auto role</th>
-    <th style="text-align:left;padding:2px 4px;">Role override</th>
+    <th>Band</th>
+    <th>Auto role</th>
+    <th>Role override</th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
 
@@ -553,7 +544,7 @@ function recomputeSweepCount(
   const hasSweep = simplexWrappers.length > 0;
   if (invalidReason) {
     counter.textContent = invalidReason;
-    counter.style.color = "#c00";
+    counter.className = "counter err";
     runBtn.disabled = true;
     return;
   }
@@ -567,14 +558,14 @@ function recomputeSweepCount(
     // Closed-form — instant. (Single-sample collapse is still legal but yields a single child.)
     if (nLocal > MAX_SWEEP_SAMPLES) {
       counter.textContent = `将运行 ${nLocal} 次 (超过上限 ${MAX_SWEEP_SAMPLES})`;
-      counter.style.color = "#c00";
+      counter.className = "counter err";
       runBtn.disabled = true;
     } else if (nLocal === 1) {
       counter.textContent = "";
       runBtn.disabled = false;
     } else {
       counter.textContent = `将运行 ${nLocal} 次`;
-      counter.style.color = "#3a3";
+      counter.className = "counter";
       runBtn.disabled = false;
     }
     return;
@@ -582,7 +573,7 @@ function recomputeSweepCount(
 
   // Bounded path — defer to backend for the exact post-filter count.
   counter.textContent = "计算中...";
-  counter.style.color = "#888";
+  counter.className = "counter pending";
   runBtn.disabled = true;
   const params = readPairedValues(form);
   previewJob(algo.name, params, ranges).then(
@@ -590,21 +581,21 @@ function recomputeSweepCount(
       if (myToken !== previewToken) return;
       if (resp.sample_count > resp.max_samples) {
         counter.textContent = `将运行 ${resp.sample_count} 次 (超过上限 ${resp.max_samples})`;
-        counter.style.color = "#c00";
+        counter.className = "counter err";
         runBtn.disabled = true;
       } else if (resp.sample_count === 1) {
         counter.textContent = "";
         runBtn.disabled = false;
       } else {
         counter.textContent = `将运行 ${resp.sample_count} 次`;
-        counter.style.color = "#3a3";
+        counter.className = "counter";
         runBtn.disabled = false;
       }
     },
     (err) => {
       if (myToken !== previewToken) return;
       counter.textContent = String(err.message ?? err);
-      counter.style.color = "#c00";
+      counter.className = "counter err";
       runBtn.disabled = true;
     },
   );
@@ -616,7 +607,7 @@ function algorithmSection(): HTMLElement {
 
   // Tab bar: builtin vs composite. Filters the algorithm dropdown below.
   const algoTabs = document.createElement("div");
-  algoTabs.style.cssText = "display:flex;gap:4px;margin-bottom:6px;";
+  algoTabs.className = "tabs";
   const tabs = [
     { id: "builtin", label: "基础算法" },
     { id: "composite", label: "复合分析" },
@@ -624,7 +615,7 @@ function algorithmSection(): HTMLElement {
   for (const t of tabs) {
     const btn = document.createElement("button");
     btn.textContent = t.label;
-    btn.style.cssText = `flex:1;padding:4px 0;cursor:pointer;${state.currentAlgoTab === t.id ? "font-weight:bold;border-bottom:2px solid #4a90d9;" : ""}`;
+    btn.className = state.currentAlgoTab === t.id ? "active" : "";
     btn.onclick = () => { state.currentAlgoTab = t.id; render(); };
     algoTabs.appendChild(btn);
   }
@@ -653,13 +644,13 @@ function algorithmSection(): HTMLElement {
 
     // Sample-count banner — updated by recomputeSweepCount on every input.
     const sweepCounter = document.createElement("div");
-    sweepCounter.style.cssText = "font-size:11px;color:#3a3;margin:4px 0 6px;min-height:14px;";
+    sweepCounter.className = "counter";
     form.appendChild(sweepCounter);
 
     // Created here so recompute() can disable/enable it before it is appended.
     const runBtn = document.createElement("button");
     runBtn.textContent = "Run";
-    runBtn.style.marginTop = "8px";
+    runBtn.className = "primary";
     runBtn.onclick = () => submit(algo, form);
     const recompute = () => recomputeSweepCount(algo, form, sweepCounter, runBtn);
 
@@ -702,21 +693,18 @@ function algorithmSection(): HTMLElement {
 
       if (dyn.paired_param && pairedParamSpec?.type === "list[float]") {
         simplexRow = document.createElement("div");
-        simplexRow.style.cssText = "display:flex;align-items:center;gap:6px;margin:5px 0 2px;flex-wrap:wrap;";
+        simplexRow.className = "sweep-bar";
         simplexRow.dataset.simplexParam = dyn.paired_param;
         simplexRow.dataset.simplexActive = "off";
 
         const simplexToggleCb = document.createElement("input");
         simplexToggleCb.type = "checkbox";
-        simplexToggleCb.style.cssText = "margin:0;cursor:pointer;";
 
         const simplexLabel = document.createElement("label");
-        simplexLabel.style.cssText = "display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#555;font-size:11px;";
         simplexLabel.appendChild(simplexToggleCb);
         simplexLabel.appendChild(document.createTextNode("单纯形采样"));
 
         const simplexTLabel = document.createElement("span");
-        simplexTLabel.style.cssText = "color:#555;font-size:11px;";
         simplexTLabel.textContent = "T =";
 
         const simplexT = document.createElement("input");
@@ -725,7 +713,6 @@ function algorithmSection(): HTMLElement {
         simplexT.step = "1";
         simplexT.value = "4";
         simplexT.className = "simplex-T";
-        simplexT.style.cssText = "width:48px;font-size:11px;";
         simplexT.disabled = true;
 
         // Reference table shown below the simplex control when active.
@@ -776,9 +763,7 @@ function algorithmSection(): HTMLElement {
             ? `${dyn.role_prefix}${i} (${dyn.paired_param})`
             : `${dyn.role_prefix}${i} — ${dyn.description}`;
           const row = document.createElement("div");
-          row.style.display = "flex";
-          row.style.gap = "4px";
-          row.style.alignItems = "center";
+          row.className = "row";
           const sel = document.createElement("select");
           sel.dataset.role = `${dyn.role_prefix}${i}`;
           sel.style.flex = "1";
@@ -801,8 +786,7 @@ function algorithmSection(): HTMLElement {
               const boundsSpan = document.createElement("span");
               boundsSpan.dataset.boundsParam = dyn.paired_param;
               boundsSpan.dataset.boundsIndex = String(i);
-              boundsSpan.style.cssText =
-                "display:none;gap:2px;align-items:center;font-size:10px;color:#666;";
+              boundsSpan.className = "bounds";
               const mkBound = (cls: string, def: string, title: string) => {
                 const inp = document.createElement("input");
                 inp.type = "number";
@@ -812,7 +796,6 @@ function algorithmSection(): HTMLElement {
                 inp.value = def;
                 inp.title = title;
                 inp.className = cls;
-                inp.style.cssText = "width:42px;font-size:10px;padding:1px 2px;";
                 inp.oninput = recompute;
                 return inp;
               };
@@ -976,7 +959,7 @@ function singleJobCard(j: Job): HTMLElement {
   const pct = Math.round(j.progress * 100);
   item.innerHTML = `
     <div><strong>${j.algorithm}</strong> · ${j.status} · ${pct}%</div>
-    <div style="color:#888;">${(j.message ?? "").split("\n")[0]}</div>
+    <div class="sub">${(j.message ?? "").split("\n")[0]}</div>
   `;
   return item;
 }
@@ -984,7 +967,6 @@ function singleJobCard(j: Job): HTMLElement {
 function sweepJobCard(parent: Job): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = `job ${parent.status}`;
-  wrap.style.cssText = "border-left:3px solid #4a90d9;padding-left:6px;";
 
   const children = state.jobs
     .filter((c) => c.parent_id === parent.id)
@@ -996,13 +978,13 @@ function sweepJobCard(parent: Job): HTMLElement {
   const header = document.createElement("div");
   header.innerHTML = `
     <strong>${parent.algorithm} 区间扫描</strong>
-    · ${succeeded}/${total} 完成${failed ? ` · <span style="color:#c00;">${failed} 失败</span>` : ""}
+    · ${succeeded}/${total} 完成${failed ? ` · <span class="err-text">${failed} 失败</span>` : ""}
   `;
   wrap.appendChild(header);
 
   for (const c of children) {
     const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:6px;align-items:center;font-size:11px;margin-top:4px;padding-left:6px;";
+    row.className = "job-child";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.disabled = c.status !== "succeeded" || !c.output_id;
@@ -1011,28 +993,19 @@ function sweepJobCard(parent: Job): HTMLElement {
     row.appendChild(cb);
 
     const label = document.createElement("span");
-    label.style.cssText = "flex:1;font-family:ui-monospace,monospace;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    label.className = "lbl";
     label.textContent = c.sample_label || `#${c.sample_index ?? "?"}`;
     label.title = c.sample_label ?? "";
     row.appendChild(label);
 
     const badge = document.createElement("span");
     badge.textContent = c.status;
-    badge.style.cssText = `font-size:10px;padding:1px 6px;border-radius:8px;${statusBadgeStyle(c.status)}`;
+    badge.className = `badge ${c.status}`;
     row.appendChild(badge);
 
     wrap.appendChild(row);
   }
   return wrap;
-}
-
-function statusBadgeStyle(status: string): string {
-  switch (status) {
-    case "succeeded": return "background:#cfe9d5;color:#264;";
-    case "failed":    return "background:#fbd2d2;color:#822;";
-    case "running":   return "background:#fce4a4;color:#643;";
-    default:          return "background:#e4e4e4;color:#555;";
-  }
 }
 
 function toggleChildLayer(child: Job, on: boolean): void {

@@ -176,13 +176,17 @@ backend/
     metadata.sqlite
 
 frontend/
-  index.html
+  index.html               # all styling lives here: Swiss-style design tokens (CSS variables)
   src/
     main.ts                # bootstrap
     api.ts                 # typed fetch wrappers
-    map.ts                 # OpenLayers map + helpers
-    ui.ts                  # side panel (vanilla DOM)
+    map.ts                 # OpenLayers map + helpers (grayscale "basemap" layer class)
+    ui.ts                  # side panel (vanilla DOM; styled via CSS classes, no inline colours)
 ```
+
+### Interface design
+
+The UI follows the International Typographic (Swiss) Style: black on white, a single signal-red accent (`--red`), Helvetica-family type with hierarchy from size/weight/case only, hairline rules on an 8 px grid, no radius or shadow, and a desaturated basemap so result rasters carry the colour. Edit the `:root` tokens in `frontend/index.html` to retheme.
 
 ## Large raster support
 

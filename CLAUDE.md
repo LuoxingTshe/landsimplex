@@ -46,7 +46,16 @@ frontend/src/
   api.ts    — 类型化 fetch 封装
   map.ts    — OpenLayers 地图
   ui.ts     — 侧边栏（原生 DOM，无框架）
+frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 ```
+
+## 前端样式规范（Swiss Style）
+
+- **样式集中在 `frontend/index.html` 的 `<style>`**，用 `:root` 变量（`--ink/--paper/--red/--hair/--mute/--u`）。`ui.ts` 里**不要**再写内联颜色/圆角，用 CSS 类（`.tag .badge .counter .job .tabs .primary .row .bounds` 等）。
+- 风格约束：黑白 + 单一强调色（`--red`）、Helvetica 系字体、8px 栅格、无圆角无阴影、细线分隔。
+- 状态用类名表达：`.badge.{succeeded|failed|running|pending}`、`.job.{status}`、`.counter.{err|pending}`。
+- 底图图层带 `className: "basemap"`，由 CSS 灰度化；结果栅格的 colormap 不受影响。
+- `.bounds` 默认 `display:none`，由 JS 内联切换 `inline-flex`/`none`（单纯形开关）。
 
 ## 关键管道流程
 

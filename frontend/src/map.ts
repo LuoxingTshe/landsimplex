@@ -17,7 +17,8 @@ export function initMap(): void {
   map = new OlMap({
     target: "map",
     layers: [
-      new TileLayer({ source: new OSM() }),
+      // className lets index.html desaturate the basemap (Swiss palette).
+      new TileLayer({ className: "basemap", source: new OSM() }),
     ],
     view: new View({
       center: [0, 0],
