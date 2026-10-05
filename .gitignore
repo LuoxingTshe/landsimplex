@@ -1,0 +1,12 @@
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.ruff_cache/
+frontend/node_modules/
+frontend/dist/
+.DS_Store
+*.pyc
+data/samples/*.tif
+data/samples/*.aux.xml
+.claude/settings.local.json
+*.swp
