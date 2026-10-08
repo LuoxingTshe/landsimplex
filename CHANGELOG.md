@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.1-beta.1 — 2026-10-08
+
+### Fixed
+- **Commit authorship.** Earlier commits were recorded with a machine-local e-mail address that was not linked to the author's GitHub account, so GitHub listed Claude as the only contributor. Commits are now attributed to the author's GitHub identity.
+
+### Changed
+- `CLAUDE.md`: documented the known `--reload` + Quit orphan-process issue and added its fix to the roadmap.
+
 ## v1.0.0-beta.1 — 2026-10-08
 
 First usable beta of LandSimplex.

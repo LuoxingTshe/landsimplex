@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     store.init_db()
     registry.load_builtins()  # populate the algorithm registry in this process
 
-    app = FastAPI(title="LandSimplex", version="1.0.0-beta.1")
+    app = FastAPI(title="LandSimplex", version="1.0.1-beta.1")
 
     app.add_middleware(
         CORSMiddleware,
