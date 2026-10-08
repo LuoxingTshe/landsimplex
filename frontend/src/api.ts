@@ -244,3 +244,38 @@ export async function shutdownApp(): Promise<void> {
   await fetch(`${API_BASE}/shutdown`, { method: "POST" }).catch(() => undefined);
   await fetch("/__shutdown", { method: "POST" }).catch(() => undefined);
 }
+
+// ---------------------------------------------------------------------------
+// Pixel probe (backend/app/api/probe.py)
+// ---------------------------------------------------------------------------
+
+export interface ProbeResult {
+  job_id: string;
+  mode: "threshold_probability" | "overlay_sweep";
+  layers: { role: string; raster_id: string; name: string }[];
+  pixel: { row: number; col: number; footprint: [number, number][] };
+  valid: boolean;
+  values: (number | null)[];
+  lattice: number[][];
+  n_divisions: number;
+  min: number[] | null;
+  max: number[] | null;
+  threshold: number | null;   // null for overlay sweeps — frontend chooses
+  output_value: number | null;
+}
+
+export class ProbeError extends Error {
+  constructor(public status: number, public code: string | null, message: string) {
+    super(message);
+  }
+}
+
+export async function probePixel(rasterId: string, lon: number, lat: number): Promise<ProbeResult> {
+  const r = await fetch(`${API_BASE}/probe/${rasterId}?lon=${lon}&lat=${lat}`);
+  if (!r.ok) {
+    const detail = await r.json().then((b) => b.detail, () => null);
+    if (detail && typeof detail === "object") throw new ProbeError(r.status, detail.code ?? null, detail.message);
+    throw new ProbeError(r.status, null, typeof detail === "string" ? detail : r.statusText);
+  }
+  return r.json();
+}

@@ -161,6 +161,37 @@
       .simplex-tbl td.cur { background: var(--red); color: var(--paper); font-weight: 700; }
       .simplex-tbl td.over { color: var(--red); }
 
+      /* ---- Simplex probe (weight space of one pixel) ---- */
+      .simplex-view h2 { display: flex; align-items: baseline; gap: var(--u); }
+      .sv-target {
+        margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--mute);
+      }
+      .sv-status { font-size: 11px; color: var(--mute); min-height: 14px; }
+      .sv-status.err { color: var(--red); }
+      .sv-plot svg { display: block; width: 100%; height: auto; margin: var(--u) 0; overflow: visible; }
+      .sv-note { font-size: 11px; color: var(--mute); padding: calc(var(--u) * 2) 0; border-bottom: 1px solid var(--hair); }
+      .sv-frame { fill: none; stroke: var(--ink); stroke-width: 1; }
+      .sv-bounds { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; }
+      .sv-pt.pass { fill: var(--red); }
+      .sv-pt.fail { fill: var(--paper); stroke: var(--mute); stroke-width: 1; }
+      .sv-pt:hover { stroke: var(--ink); stroke-width: 2; }
+      .sv-letter { font: 700 13px var(--font); fill: var(--ink); }
+      .sv-name { font: 10px var(--font); fill: var(--mute); }
+      .probe-pct { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+      .probe-pct small { font-size: 16px; margin-left: 2px; letter-spacing: 0; }
+      .probe-sub { font-size: 11px; color: var(--mute); margin-top: 4px; font-variant-numeric: tabular-nums; }
+      .probe-tbl { width: 100%; table-layout: fixed; font-size: 11px; margin-top: var(--u); font-variant-numeric: tabular-nums; }
+      .probe-tbl td { padding: 2px 0; border-bottom: 1px solid var(--hair); }
+      .probe-tbl td.k { font-weight: 700; width: 16px; }
+      .probe-tbl td.name { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .probe-tbl td.num { text-align: right; width: 48px; }
+      .sv-threshold { display: flex; align-items: center; gap: var(--u); color: var(--ink); margin-top: calc(var(--u) * 2); }
+      .sv-threshold input[type=range] { flex: 1; accent-color: var(--red); }
+      .sv-threshold .val { font-weight: 700; font-variant-numeric: tabular-nums; width: 32px; text-align: right; }
+      .icon-btn.probe-btn.on { background: var(--red); border-color: var(--red); color: var(--paper); }
+      #map.probing { cursor: crosshair; }
+
       /* ---- Stopped screen (after Quit) ---- */
       .halted { grid-column: 1 / -1; align-self: start; margin: calc(var(--u) * 8); border-top: 8px solid var(--red); padding-top: var(--u); max-width: 40em; }
       .halted h1 { font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; margin: 0; }

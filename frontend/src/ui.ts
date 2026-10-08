@@ -20,6 +20,8 @@ import {
   listRasters,
   listScenes,
   previewJob,
+  probePixel,
+  ProbeError,
   setBandRole,
   shutdownApp,
   submitJob,
@@ -27,7 +29,16 @@ import {
   uploadRaster,
   uploadScene,
 } from "./api";
-import { addRasterLayer, fitToBoundsWGS84, removeRasterLayer, setLayerVisible } from "./map";
+import {
+  addRasterLayer,
+  fitToBoundsWGS84,
+  onMapClick,
+  removeRasterLayer,
+  setLayerVisible,
+  setProbeCursor,
+  setProbeFootprint,
+} from "./map";
+import { createSimplexView, SimplexView } from "./simplexView";
 
 const MAX_SWEEP_SAMPLES = 200;
 
@@ -102,13 +113,38 @@ const state = {
   currentTab: "rasters" as "rasters" | "scenes",
   scenes: [] as Scene[],
   currentAlgoTab: "builtin" as "builtin" | "composite",
+  probeTarget: null as string | null,   // result raster id the map probe reads
 };
 
 const panel = () => document.getElementById("panel")!;
 
+// Built once in initPanel: masthead + simplex view stay mounted, render() only
+// rebuilds `body`. Job polling re-renders every second, and re-creating the
+// simplex view would drop its SVG and steal focus from the threshold slider.
+let body: HTMLElement;
+let simplexView: SimplexView;
+
 export async function initPanel(): Promise<void> {
   state.algorithms = await listAlgorithms();
   await Promise.all([refreshRasters(), refreshScenes()]);
+  panel().innerHTML = `
+    <header class="masthead">
+      <div class="masthead-top">
+        <h1>LandSimplex</h1>
+        <button class="quit" title="Stop backend and frontend servers">Quit</button>
+      </div>
+      <p>Weight-space sensitivity analysis for raster-based landscape suitability.</p>
+    </header>`;
+  panel().querySelector<HTMLButtonElement>("button.quit")!.onclick = quit;
+  simplexView = createSimplexView();
+  simplexView.setTarget(null);
+  body = document.createElement("div");
+  panel().append(simplexView.el, body);
+
+  onMapClick(probeAt);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") clearProbe();
+  });
   render();
 }
 
@@ -121,24 +157,60 @@ async function refreshScenes(): Promise<void> {
 }
 
 function render(): void {
-  panel().innerHTML = `
-    <header class="masthead">
-      <div class="masthead-top">
-        <h1>LandSimplex</h1>
-        <button class="quit" title="Stop backend and frontend servers">Quit</button>
-      </div>
-      <p>Weight-space sensitivity analysis for raster-based landscape suitability.</p>
-    </header>`;
-  panel().querySelector<HTMLButtonElement>("button.quit")!.onclick = quit;
-  panel().appendChild(tabBar());
+  body.replaceChildren();
+  body.appendChild(tabBar());
   if (state.currentTab === "rasters") {
-    panel().appendChild(uploadSection());
+    body.appendChild(uploadSection());
   } else {
-    panel().appendChild(sceneBundleSection());
+    body.appendChild(sceneBundleSection());
   }
-  panel().appendChild(rasterListSection());
-  panel().appendChild(algorithmSection());
-  panel().appendChild(jobsSection());
+  body.appendChild(rasterListSection());
+  body.appendChild(algorithmSection());
+  body.appendChild(jobsSection());
+}
+
+// ---- Pixel probe ----
+
+/** Results the probe can read (backend/app/api/probe.py is the authority). */
+function isProbeable(r: Raster): boolean {
+  return r.kind === "result"
+    && (r.name.startsWith("threshold_probability ") || r.name.startsWith("weighted_overlay ["));
+}
+
+// Monotonic token: a newer click or a target change discards stale responses.
+let probeToken = 0;
+
+function setProbeTarget(r: Raster | null): void {
+  state.probeTarget = r?.id ?? null;
+  probeToken++;
+  setProbeFootprint(null);
+  setProbeCursor(r !== null);
+  simplexView.setTarget(r?.name ?? null);
+  if (r && !state.activeLayers.has(r.id)) addLayer(r);
+  render();
+}
+
+function clearProbe(): void {
+  probeToken++;
+  setProbeFootprint(null);
+  simplexView.clear();
+}
+
+async function probeAt(lon: number, lat: number): Promise<void> {
+  const target = state.probeTarget;
+  if (!target) return;
+  const myToken = ++probeToken;
+  simplexView.setStatus("Probing…");
+  try {
+    const p = await probePixel(target, lon, lat);
+    if (myToken !== probeToken) return;
+    setProbeFootprint(p.pixel.footprint);
+    simplexView.show(p);
+  } catch (err) {
+    if (myToken !== probeToken) return;
+    clearProbe();
+    simplexView.setStatus(err instanceof ProbeError ? err.message : `Probe failed: ${err}`, true);
+  }
 }
 
 async function quit(): Promise<void> {
@@ -220,6 +292,7 @@ function rasterListSection(): HTMLElement {
         <input type="checkbox" ${active ? "checked" : ""} data-rid="${r.id}" />
         <strong>${r.name}</strong>
         <span class="tag ${r.kind}">${r.kind}</span>
+        ${isProbeable(r) ? `<button class="probe-btn icon-btn${state.probeTarget === r.id ? " on" : ""}" title="Probe: click the map to see this pixel in weight space">◎</button>` : ""}
         <button class="delete-btn icon-btn" title="Delete layer">✕</button>
       </div>
       <div class="meta">${r.crs} · ${r.width}×${r.height} · ${r.dtype}</div>
@@ -233,6 +306,13 @@ function rasterListSection(): HTMLElement {
         state.activeLayers.delete(r.id);
       }
     };
+    const probeBtn = item.querySelector<HTMLButtonElement>(".probe-btn");
+    if (probeBtn) {
+      probeBtn.onclick = (ev) => {
+        ev.stopPropagation();
+        setProbeTarget(state.probeTarget === r.id ? null : r);
+      };
+    }
     const delBtn = item.querySelector<HTMLButtonElement>(".delete-btn")!;
     delBtn.onclick = async (ev) => {
       ev.stopPropagation();
@@ -254,6 +334,7 @@ function rasterListSection(): HTMLElement {
           removeRasterLayer(r.id);
           state.activeLayers.delete(r.id);
         }
+        if (state.probeTarget === r.id) setProbeTarget(null);
         await refreshRasters();
         render();
       } catch (err) {
@@ -261,7 +342,7 @@ function rasterListSection(): HTMLElement {
       }
     };
     item.onclick = (ev) => {
-      if ((ev.target as HTMLElement).tagName !== "INPUT" && !(ev.target as HTMLElement).classList.contains("delete-btn")) {
+      if ((ev.target as HTMLElement).tagName !== "INPUT" && !(ev.target as HTMLElement).closest("button")) {
         fitToBoundsWGS84(r.bounds_wgs84);
       }
     };

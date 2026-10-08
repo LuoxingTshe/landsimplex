@@ -45,8 +45,9 @@ backend/app/
 frontend/src/
   main.ts   — 入口：initMap() + initPanel()
   api.ts    — 类型化 fetch 封装
-  map.ts    — OpenLayers 地图
+  map.ts    — OpenLayers 地图；探针光标图层（onMapClick / setProbeFootprint）
   ui.ts     — 侧边栏（原生 DOM，无框架）
+  simplexView.ts — 单纯形探针视图（SVG：n=2 线段、n=3 三角形；阈值滑块本地重算）
 frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 ```
 
@@ -207,6 +208,9 @@ def delete_raster(raster_id: str) -> Response:
 - 支持对象：`threshold_probability` 结果（格点来自 `params._internal_sweep.weights`，阈值 = `target_score`）和 `weighted_overlay` 扫描子结果（格点来自父任务 `param_ranges.weights`，阈值由前端定）。其他结果 → 400 `code:"not_probeable"`。
 - **层值必须在结果栅格网格上采样**（`reproject` 到 1×1 目标像素，重采样同 `runner._build_resampling_map`）。normalize 会把网格对齐到分辨率整数倍，结果网格可能与输入网格错开半个像素，直接读源 COG 的像素会和地图值对不上。
 - 不变量：threshold_probability 下 `mean(lattice·values > threshold) == output_value`（`test_probe.py` 覆盖对齐/错位网格）。
+- 前端：栅格列表里可探针的结果带 `◎`（`isProbeable()` 按名字前缀判断，后端是最终权威）→ `state.probeTarget`；点地图 → `probePixel` → `simplexView.show()` + `setProbeFootprint()`。`Esc` 清除当前像素。
+- **`render()` 只重建 `body`**：masthead 和 `simplexView.el` 在 `initPanel()` 里只挂载一次。轮询任务时每秒 render，如果重建视图会丢 SVG、打断滑块拖动。新增侧边栏区块时往 `body` 里加，不要再 `panel().innerHTML = ...`。
+- 探针请求用 `probeToken` 丢弃过期响应（快速连点、切换目标时）。
 
 ### Quit 按钮（关闭前后端）
 
