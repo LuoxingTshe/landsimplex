@@ -21,6 +21,7 @@ backend/app/
     tiles.py     — XYZ 瓦片（rio-tiler 读 COG）
     jobs.py      — 算法 + 任务 CRUD
     scenes.py    — 卫星数据包摄取 API
+    probe.py     — GET /probe/{raster_id}?lon&lat：像素层值 + 权重空间格点（单纯形探针）
   pipeline/
     cogify.py    — GeoTIFF → COG；大文件（≥200 MiB）走三步路径
     alignment.py — AlignmentSpec 数据类（冻结网格：CRS/分辨率/原点/宽高）
@@ -145,7 +146,7 @@ frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 - `POST /jobs/preview` — 解析 param_ranges 并返回精确 sample_count（不入队）。前端在 bounds 非默认时调用以显示实时计数；payload 与 /jobs 相同但不需要 `inputs`
 - `GET /jobs/{id}/children` — 扫描子任务列表（按 sample_index 排序）
 
-**测试：** `conda run -n landplan pytest tests/` — 82 个测试（test_raster_delete、test_sweep、test_jobs_api、test_reclassify_algorithms、test_threshold_probability），覆盖 sweep 纯函数（含 bounds）、API（含 /jobs/preview）、重分类算法、WLC 阈值概率与删除引用检查。
+**测试：** `cd backend && conda run -n landplan pytest tests/` — 92 个测试（test_raster_delete、test_sweep、test_jobs_api、test_reclassify_algorithms、test_threshold_probability、test_probe），覆盖 sweep 纯函数（含 bounds）、API（含 /jobs/preview）、重分类算法、WLC 阈值概率与删除引用检查。
 
 **单一幸存者：** 当 bounds 把样本数压缩到正好 1 时，`POST /jobs` 用 `expand_ranges` 解析出的那个组合的 params 提交单任务，而**不是** `req.params` 中的 base 值。`n == 1` 分支在 `expand_ranges` 调用之后，保证有/无 bounds 都正确（空 `param_ranges={}` 也走这条路径，degenerate 时 `expand_ranges` 返回 `[(base, "")]`）。
 
@@ -199,6 +200,13 @@ def delete_raster(raster_id: str) -> Response:
 ```
 
 适用范围：`backend/app/api/` 中所有 DELETE（及其他无内容响应）端点。
+
+### 单纯形探针（/probe）
+
+- 像素得分对权重线性：`score(w) = Σ wᵢ·vᵢ`。后端只返回该像素的 n 个层值 + 格点，通过/不通过由前端点积计算（阈值滑块即时重算）。
+- 支持对象：`threshold_probability` 结果（格点来自 `params._internal_sweep.weights`，阈值 = `target_score`）和 `weighted_overlay` 扫描子结果（格点来自父任务 `param_ranges.weights`，阈值由前端定）。其他结果 → 400 `code:"not_probeable"`。
+- **层值必须在结果栅格网格上采样**（`reproject` 到 1×1 目标像素，重采样同 `runner._build_resampling_map`）。normalize 会把网格对齐到分辨率整数倍，结果网格可能与输入网格错开半个像素，直接读源 COG 的像素会和地图值对不上。
+- 不变量：threshold_probability 下 `mean(lattice·values > threshold) == output_value`（`test_probe.py` 覆盖对齐/错位网格）。
 
 ### Quit 按钮（关闭前后端）
 

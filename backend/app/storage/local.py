@@ -271,6 +271,13 @@ def get_job(job_id: str) -> Optional[dict[str, Any]]:
     return d
 
 
+def find_job_by_output(raster_id: str) -> Optional[dict[str, Any]]:
+    """The job that produced `raster_id`, or None for source rasters."""
+    with connect() as c:
+        row = c.execute("SELECT id FROM jobs WHERE output_id = ?", (raster_id,)).fetchone()
+    return get_job(row["id"]) if row else None
+
+
 def list_children(parent_id: str) -> list[dict[str, Any]]:
     """All child jobs of a sweep, ordered by sample_index."""
     with connect() as c:

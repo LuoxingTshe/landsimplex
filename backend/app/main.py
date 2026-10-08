@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .algorithms import registry
-from .api import jobs, rasters, scenes, tiles
+from .api import jobs, probe, rasters, scenes, tiles
 from .config import FRONTEND_ORIGINS, ensure_dirs
 from .jobs import runner
 from .storage import local as store
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(scenes.router)
     app.include_router(tiles.router)
     app.include_router(jobs.router)
+    app.include_router(probe.router)
 
     @app.get("/health")
     def health() -> dict:
