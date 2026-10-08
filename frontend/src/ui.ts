@@ -21,6 +21,7 @@ import {
   listScenes,
   previewJob,
   setBandRole,
+  shutdownApp,
   submitJob,
   tileUrl,
   uploadRaster,
@@ -122,9 +123,13 @@ async function refreshScenes(): Promise<void> {
 function render(): void {
   panel().innerHTML = `
     <header class="masthead">
-      <h1>LandSimplex</h1>
+      <div class="masthead-top">
+        <h1>LandSimplex</h1>
+        <button class="quit" title="Stop backend and frontend servers">Quit</button>
+      </div>
       <p>Weight-space sensitivity analysis for raster-based landscape suitability.</p>
     </header>`;
+  panel().querySelector<HTMLButtonElement>("button.quit")!.onclick = quit;
   panel().appendChild(tabBar());
   if (state.currentTab === "rasters") {
     panel().appendChild(uploadSection());
@@ -134,6 +139,20 @@ function render(): void {
   panel().appendChild(rasterListSection());
   panel().appendChild(algorithmSection());
   panel().appendChild(jobsSection());
+}
+
+async function quit(): Promise<void> {
+  const active = state.jobs.filter((j) => j.status === "running" || j.status === "pending").length;
+  const warn = active ? `\n\n${active} running/pending job(s) will be cancelled.` : "";
+  if (!confirm(`Stop the LandSimplex backend and frontend servers?${warn}`)) return;
+  await shutdownApp();
+  document.getElementById("app")!.innerHTML = `
+    <div class="halted">
+      <h1>Stopped.</h1>
+      <p>Backend and frontend servers have shut down. You can close this tab.<br>
+         Restart with <code>just backend</code> and <code>just frontend</code>.</p>
+    </div>`;
+  window.close(); // only succeeds if the tab was opened by script; harmless otherwise
 }
 
 function tabBar(): HTMLElement {

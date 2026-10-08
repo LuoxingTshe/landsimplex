@@ -41,6 +41,9 @@
       /* ---- Masthead ---- */
       .masthead { border-top: 8px solid var(--red); padding-top: var(--u); margin-bottom: calc(var(--u) * 3); }
       .masthead h1 { font-size: 28px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
+      .masthead-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--u); }
+      button.quit { padding: 2px 8px; border-width: 1px; }
+      button.quit:hover:not(:disabled) { background: var(--red); border-color: var(--red); }
       .masthead p { font-size: 11px; line-height: 1.4; color: var(--mute); margin: var(--u) 0 0; max-width: 24em; }
 
       /* ---- Type ---- */
@@ -157,6 +160,12 @@
       .simplex-tbl td.head { font-weight: 700; }
       .simplex-tbl td.cur { background: var(--red); color: var(--paper); font-weight: 700; }
       .simplex-tbl td.over { color: var(--red); }
+
+      /* ---- Stopped screen (after Quit) ---- */
+      .halted { grid-column: 1 / -1; align-self: start; margin: calc(var(--u) * 8); border-top: 8px solid var(--red); padding-top: var(--u); max-width: 40em; }
+      .halted h1 { font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
+      .halted p { font-size: 13px; line-height: 1.5; color: var(--mute); margin: calc(var(--u) * 2) 0 0; }
+      .halted code { font-family: var(--mono); font-size: 12px; color: var(--ink); }
 
       /* ---- Map chrome (OpenLayers) ---- */
       .ol-control { background: transparent; }

@@ -238,3 +238,9 @@ export async function deleteRaster(rasterId: string, force = false): Promise<voi
   }
   if (!r.ok) throw new Error(await r.text());
 }
+
+/** Stop the backend, then the Vite dev server. Either may already be gone. */
+export async function shutdownApp(): Promise<void> {
+  await fetch(`${API_BASE}/shutdown`, { method: "POST" }).catch(() => undefined);
+  await fetch("/__shutdown", { method: "POST" }).catch(() => undefined);
+}

@@ -39,6 +39,20 @@ def get_executor() -> ProcessPoolExecutor:
     return _executor
 
 
+def shutdown() -> None:
+    """Cancel queued jobs and kill workers so process exit isn't blocked by a running job."""
+    global _executor
+    if _executor is None:
+        return
+    # Python 3.11 has no terminate_workers(); grab the private process map first
+    # because shutdown() clears it.
+    procs = list((_executor._processes or {}).values())
+    _executor.shutdown(wait=False, cancel_futures=True)
+    for p in procs:
+        p.terminate()
+    _executor = None
+
+
 def _worker_init() -> None:
     """Run in each worker process. Load algorithms so registry is populated."""
     registry.load_builtins()

@@ -200,6 +200,12 @@ def delete_raster(raster_id: str) -> Response:
 
 适用范围：`backend/app/api/` 中所有 DELETE（及其他无内容响应）端点。
 
+### Quit 按钮（关闭前后端）
+
+- 侧边栏 masthead 右上角 `.quit` 按钮 → `shutdownApp()`：先 `POST /shutdown`（后端），再 `POST /__shutdown`（Vite 插件，见 `frontend/vite.config.ts`），最后渲染 `.halted` 页面。
+- 后端 `_terminate_server()`（`main.py`）先 `runner.shutdown()` 杀掉进程池（否则运行中的任务会阻塞退出），再 SIGTERM：`--reload` 下发给 reloader 父进程（`multiprocessing.parent_process()` 非 None），否则发给自己。
+- 两个端点都校验 `Origin`（跨站简单 POST 不走 CORS 预检），非前端来源返回 403。
+
 ## SQLite 存储
 
 位置：`backend/data/metadata.sqlite`（`DB_PATH` in `config.py`）
