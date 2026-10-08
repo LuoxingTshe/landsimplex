@@ -1,7 +1,7 @@
 [project]
 name = "landsimplex-backend"
-version = "0.1.0"
-description = "Landscape planning GIS platform - MVP backend"
+version = "1.0.0b1"
+description = "LandSimplex backend - simplex-sampled weight-space sensitivity for raster suitability analysis"
 requires-python = ">=3.11"
 
 [project.optional-dependencies]

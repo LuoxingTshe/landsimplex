@@ -1,5 +1,7 @@
 # LandSimplex — 开发指南
 
+**当前版本：** `v1.0.0-beta.1`（2026-10-08，首个可用 beta）。版本号同步位置：`backend/app/main.py`（FastAPI version）、`backend/pyproject.toml`（PEP 440 写法 `1.0.0b1`）、`frontend/package.json` + `package-lock.json`；发版说明写在 `CHANGELOG.md`，打 tag `vX.Y.Z-beta.N`。
+
 ## 环境与启动
 
 - **Conda env:** `landplan`（Python 3.11, GDAL 3.8, rasterio 1.3, FastAPI）
@@ -7,7 +9,7 @@
   - **必须从项目根目录运行**，justfile 在根目录。
 - **前端：** `just frontend`
 - **访问：** http://localhost:5173
-- **示例数据：** `data/samples/`（DEM.tif、TestDoc.tif，已 gitignore）；运行时数据仍在 `backend/data/`。
+- **示例数据：** `data/samples/`（DEM.tif、TestDoc.tif，已 gitignore）；运行时数据仍在 `backend/data/`。合成 WLC 测试数据：`conda run -n landplan python scripts/make_wlc_sample.py` → `data/samples/wlc_test/`（A_east / B_north / C_center，100×100）。
 - **Conda env 名保持 `landplan`**（项目已更名为 LandSimplex，env 沿用旧名以免重建环境）。
 - **首次安装（macOS arm64）：** `brew install just && brew install --cask miniforge`，然后 `just setup`（建 conda 环境 + `npm install`）。测试依赖需另装：`conda run -n landplan pip install pytest`（pytest 不在 `environment.yml` 中）。
 - **nimplex：** `backend/vendor/nimplex.so` 已是 arm64 预编译版，开箱可用，无需装 Nim。
@@ -154,11 +156,14 @@ frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 ## 开发路线图（按优先级）
 
 1. ✅ **删除时引用检查**（已完成，规则见下节）：避免删除栅格后留下孤儿 job 记录。
-2. **导入时处理地理坐标系（EPSG:4326）**：目前 slope 在度制坐标系上数值错误且无提示；至少导入时警告，或算法前自动重投影到投影 CRS。
-3. **瓦片缓存**：`rio-tiler` 每次请求重读 COG；加 LRU/磁盘缓存，利于多个扫描结果叠加对比。
-4. **任务持久化 + WebSocket/SSE**：重启丢任务、前端每秒轮询；先持久化，再换推送。
-5. **normalize 结果缓存**：`AlignmentSpec.signature` 可作缓存键；目前"故意未做"，属产品取舍，动手前先确认。
-6. **新功能方向**：矢量数据（GeoPackage，红线/保护区约束）；更多景观算法（视域、坡位、水文）；扫描结果汇总统计（均值/方差图）；`registry` 增加 `user_plugins/` 扫描。
+2. ✅ **像素探针 + 权重空间单纯形视图 n=2/3**（v1.0.0-beta.1，规则见"单纯形探针"）。
+3. **探针后续阶段**：阶段 3 = n=4 四面体（拖拽旋转、按深度排序）；阶段 4 = n=5/6（选 3 个权重做投影三角形，"其余"并入第三顶点，重叠格点聚合显示 + 平行坐标）。都只改 `simplexView.ts`，后端接口已支持任意 n。
+4. **`cog_path` 改存相对路径**：目前存绝对路径，项目目录一移动旧记录全部失效（beta 前曾手动重写过前缀）。
+5. **导入时处理地理坐标系（EPSG:4326）**：目前 slope 在度制坐标系上数值错误且无提示；至少导入时警告，或算法前自动重投影到投影 CRS。
+6. **瓦片缓存**：`rio-tiler` 每次请求重读 COG；加 LRU/磁盘缓存，利于多个扫描结果叠加对比。
+7. **任务持久化 + WebSocket/SSE**：重启丢任务、前端每秒轮询；先持久化，再换推送。
+8. **normalize 结果缓存**：`AlignmentSpec.signature` 可作缓存键；目前"故意未做"，属产品取舍，动手前先确认。
+9. **新功能方向**：矢量数据（GeoPackage，红线/保护区约束）；更多景观算法（视域、坡位、水文）；扫描结果汇总统计（均值/方差图）；`registry` 增加 `user_plugins/` 扫描。
 
 ## 删除栅格的引用规则
 

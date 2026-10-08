@@ -2,11 +2,11 @@
 
 > **LandSimplex: A Simplex-Sampled Weight-Space Sensitivity Prototype for Raster-Based Landscape Suitability Analysis**
 >
-> Research prototype (v0.1). Not production software.
+> **Beta 1.0** (`v1.0.0-beta.1`) — first usable release. Research software: single-user, local-only, APIs may still change. See [CHANGELOG.md](CHANGELOG.md).
 
-End-to-end skeleton for a large-scale landscape-planning GIS platform.
+LandSimplex runs weighted linear combination (WLC) suitability analysis over the whole space of weight choices instead of one hand-picked weight vector. It samples the weight simplex on a uniform lattice, maps how often each pixel stays suitable, and lets you click any pixel to see *which* weight combinations make it pass.
 
-## Scope (MVP)
+## Scope
 
 | In | Out (later) |
 |---|---|
@@ -21,6 +21,8 @@ End-to-end skeleton for a large-scale landscape-planning GIS platform.
 | OpenLayers map with layer toggle + delete | Job persistence across server restarts |
 | Process-pool jobs with polled progress + per-result stats-driven rescale | |
 | Sentinel-2 / Landsat 8/9 bundle ingestion | |
+| **Pixel probe + weight-space simplex view**: click a pixel, see every lattice weight vector coloured pass/fail on a simplex (n = 2 segment, n = 3 triangle) with the lattice pass rate and a live threshold slider | Simplex geometry for n ≥ 4 (tetrahedron, projections) |
+| In-app Quit button that stops backend + frontend dev servers | |
 
 ## Prerequisites
 
@@ -29,6 +31,8 @@ End-to-end skeleton for a large-scale landscape-planning GIS platform.
 - [just](https://github.com/casey/just) (optional; commands also given below)
 
 ## Setup
+
+macOS (Apple Silicon) from scratch: `brew install just && brew install --cask miniforge`, then `just setup`. The bundled `backend/vendor/nimplex.so` is prebuilt for arm64 + Python 3.11, so Nim is not needed.
 
 ```bash
 # Backend env (creates conda env 'landplan')
@@ -39,6 +43,8 @@ cd frontend && npm install && cd ..
 ```
 
 Or with just: `just setup`
+
+Tests need pytest (not in `environment.yml`): `conda run -n landplan pip install pytest httpx`, then `cd backend && conda run -n landplan pytest tests/`.
 
 ## Run
 
@@ -54,11 +60,19 @@ cd frontend && npm run dev
 
 Or: `just backend` and `just frontend`.
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173>. The **Quit** button at the top right of the sidebar stops both servers.
 
 ## Test data
 
-Get a small DEM. Two easy options:
+**Quickest: synthetic WLC factors.** No download needed:
+
+```bash
+conda run -n landplan python scripts/make_wlc_sample.py
+```
+
+This writes three 100×100 factor rasters in [0, 1] to `data/samples/wlc_test/` (gitignored): `A_east` (west→east gradient), `B_north` (south→north gradient) and `C_center` (central bump). Upload all three and use them as `layer_0..2` for `WLC阈值概率密度` or `weighted_overlay` (see steps 7 and 11 below).
+
+**A real DEM** for slope / aspect / sun score. Two easy options:
 
 - SRTM 30m tile from <https://search.earthdata.nasa.gov> (NASA Earthdata login)
 - For a quick smoke test: any single-band GeoTIFF will work, as long as it has
@@ -81,6 +95,8 @@ The algorithm panel has two tabs: **基础算法 (builtin)** for atomic algorith
 8. **Delete a layer.** Click the red ✕ button on any raster row in the side panel. The layer is removed from the map, the COG file is deleted from disk, and the catalogue record is removed.
 9. **Sweep a parameter space — simplex sampling.** Upload two or three rasters, pick `weighted_overlay`, and tick the **单纯形采样** checkbox below the layer rows. Set T (n_divisions) = 4 — the counter shows "将运行 5 次" for n=2 layers (C(2+4-1, 4) = 5), jumping to "将运行 15 次" if you bump the layer count to 3. The reference table on the right shows sample counts for n=2..6 and T=1..10 with the active cell highlighted; values exceeding the 200-sample cap render red with ↑. Submit — the jobs panel shows one sweep parent + N children with labels like `weights=[0.25,0.25,0.5]`. Tick the checkbox next to any succeeded child to overlay its result on the map (multiple can be visible at once for comparison). Children are NOT auto-loaded.
 10. **Constrain the simplex with per-component bounds.** With 单纯形采样 active, each weight row grows a small `≥ [0] ≤ [1]` pair after the base-weight input. Set e.g. `max[0] = 0.5`, `max[1] = 0.5` for a 3-layer overlay at T=4 — the counter switches from "将运行 15 次" to "将运行 9 次" (the backend's `POST /jobs/preview` returns the post-filter exact count; local debounce). Bounds where `sum(min) > 1`, `sum(max) < 1`, any value outside `[0, 1]`, or where filtering eliminates every lattice point all surface inline as red error messages and block Run. If exactly one lattice point survives, the submit collapses to a single (non-sweep) job using that one combination — not the base weights.
+11. **Probe a pixel in weight space.** Run `WLC阈值概率密度` on the synthetic factors (target 0.5, 单纯形采样 on, T = 10 → 66 weight vectors). In the raster list, click **◎** on the result: it becomes the probe target, loads on the map, and the cursor turns into a crosshair. Click the map. A red frame locks the pixel and the **Weight space** view at the top of the sidebar draws the triangle (A, B, C at the vertices): red squares are weight vectors whose score passes the threshold, hollow squares fail. The big number is the lattice pass rate, which equals the map value at that pixel (✓). For the synthetic data: centre ≈ 90.9 %, north-east corner ≈ 68.2 %, south-west corner 0 %. Hover a square for its weights and score; drag the threshold slider to re-evaluate instantly (the readout then notes it differs from the map). `Esc` clears the pixel; click ◎ again to stop probing. Works the same on a `weighted_overlay` sweep child (the slider then sets the threshold). Two-factor jobs draw a segment; four or more factors show the readout only for now.
+12. **Quit.** Click **Quit** (top right), confirm, and both servers shut down; running jobs are cancelled.
 
 ## What lives where
 
@@ -88,7 +104,7 @@ The algorithm panel has two tabs: **基础算法 (builtin)** for atomic algorith
 backend/
   app/
     config.py              # paths, port, defaults
-    main.py                # FastAPI app
+    main.py                # FastAPI app; POST /shutdown (Quit button)
     api/
       rasters.py           # upload, list, get, delete — POST /rasters/upload converts to COG
                            #   DELETE /rasters/{id} removes catalogue record + COG file
@@ -100,6 +116,8 @@ backend/
                            #   maps are looked up inline before rio-tiler builtins
       jobs.py              # /algorithms, /jobs, /jobs/{id}
       scenes.py            # satellite bundle upload + band role assignment
+      probe.py             # GET /probe/{result_id}?lon&lat — pixel layer values + weight lattice
+                           #   values are warped onto the result grid exactly as normalize() does
     pipeline/
       cogify.py            # GeoTIFF → COG on import
                            #   < 200 MiB: single-pass rio_copy(driver="COG")
@@ -161,9 +179,11 @@ backend/
   pyproject.toml           # [project.optional-dependencies] dev = [pytest, httpx]
   tests/                   # pytest suite — `conda run -n landplan pytest tests/`
     conftest.py            # isolated_data_dirs fixture: per-test tmp_path + reload
-    test_sweep.py          # 30 unit tests for parameter sweep: simplex + bounds
-    test_jobs_api.py       # 18 FastAPI TestClient tests for /jobs + /jobs/preview
-                           # (single, sweep, bounded sweep, single-survivor, rejections)
+    test_sweep.py          # parameter sweep: simplex + bounds (pure functions)
+    test_jobs_api.py       # /jobs + /jobs/preview (single, sweep, bounds, rejections)
+    test_probe.py          # /probe on real pipeline output: pass rate == map value,
+                           #   aligned + half-pixel-shifted grids, nodata, 404/400 paths
+    test_raster_delete.py, test_reclassify_algorithms.py, test_threshold_probability.py
   vendor/
     nimplex.so             # compiled nimplex Python extension (Nim 2.x, Python 3.11)
                            #   source: https://github.com/amkrajewski/nimplex
@@ -177,11 +197,17 @@ backend/
 
 frontend/
   index.html               # all styling lives here: Swiss-style design tokens (CSS variables)
+  vite.config.ts           # dev server + POST /__shutdown (Quit button)
   src/
     main.ts                # bootstrap
     api.ts                 # typed fetch wrappers
-    map.ts                 # OpenLayers map + helpers (grayscale "basemap" layer class)
+    map.ts                 # OpenLayers map + helpers (grayscale "basemap" layer class,
+                           #   probe cursor layer: pixel footprint + crosshair)
     ui.ts                  # side panel (vanilla DOM; styled via CSS classes, no inline colours)
+    simplexView.ts         # weight-space simplex view (SVG) for the pixel probe
+
+scripts/
+  make_wlc_sample.py       # synthetic 3-factor WLC test rasters
 ```
 
 ### Interface design
@@ -275,6 +301,29 @@ The expanded sample count is capped at `MAX_SWEEP_SAMPLES = 200`. Larger sweeps 
 
 `normalize()` is called once per child. Caching that step across siblings is the obvious optimization but is deliberately deferred — `MAX_SWEEP_SAMPLES + max_workers=2` keep worst-case runtime tolerable, and keeping each child a normal job means the runner / writer / storage code paths are unchanged.
 
+### Pixel probe / weight-space view (`api/probe.py`, `simplexView.ts`)
+
+A pixel's WLC score is linear in the weights: `score(w) = Σ wᵢ·vᵢ`, where `vᵢ` is the pixel's value in layer *i*. So the backend only returns the pixel's *n* layer values plus the lattice, and the frontend gets pass/fail for every weight vector from one dot product each. The threshold slider never calls the backend.
+
+`GET /probe/{raster_id}?lon=&lat=` takes a **result** raster:
+
+- `threshold_probability` result → lattice from `params._internal_sweep.weights` (T, min, max), threshold = `target_score`.
+- `weighted_overlay` sweep child → lattice from the parent's `param_ranges.weights`, threshold `null` (set in the UI).
+- anything else → 400 `{"code": "not_probeable"}`; a point outside the raster → 404; nodata in any layer → `valid: false`.
+
+Layer values are **sampled on the result grid**, not read from the source COGs: `reproject()` onto a 1×1 destination at the locked pixel, with the same per-role resampling the runner gives `normalize()`. `normalize()` snaps the grid to whole multiples of the resolution, so a result grid can sit half a pixel off its inputs; reading source pixels directly would disagree with the map. The invariant `mean(lattice·values > threshold) == output_value` is tested on aligned and shifted grids, and was checked on 300 random pixels of a 7500×6500 real result.
+
+Response:
+
+```json
+{ "mode": "threshold_probability", "layers": [{"role": "layer_0", "name": "A_east", "raster_id": "…"}],
+  "pixel": {"row": 50, "col": 50, "footprint": [[lon, lat], …]},
+  "valid": true, "values": [0.505, 0.495, 1.0], "lattice": [[1, 0, 0], [0.9, 0.1, 0], …],
+  "n_divisions": 10, "min": null, "max": null, "threshold": 0.5, "output_value": 0.909 }
+```
+
+In the sidebar, `render()` rebuilds only the area below the simplex view. The view is mounted once, so the 1 s job-poll re-render doesn't reset the SVG or interrupt a slider drag.
+
 ### Output (`writer.py`)
 
 The tiled GTiff intermediate is always written window-by-window (no full-array copy). The COG finalisation step applies the same large-file check as `cogify.py`: if the output exceeds 200 MiB, overviews are pre-built before `copy_src_overviews=True` is used, avoiding `/vsimem/` allocation.
@@ -293,11 +342,15 @@ The tiled GTiff intermediate is always written window-by-window (no full-array c
 | Threshold probability (N = 6, large) | ≈ 8 MB (accumulator + N layer tiles) |
 | Write large output | ≈ 2 MB + 512 MiB GDAL cache |
 
-## Known MVP limitations (deliberate)
+## Known limitations (beta)
 
+- **Simplex geometry only for n = 2 and 3.** Four or more factors show the numeric readout only; tetrahedron (n = 4) and projection views (n = 5, 6) are planned.
+- **Exact ties at the threshold.** The map is computed in float32, the probe in float64. A weight vector whose score lands exactly on the threshold (possible with coarse class scores like 0.2 / 0.4) can flip, so the probe rate may differ from the map by 1/N.
+- **Absolute paths in the catalogue.** `rasters.cog_path` stores absolute paths; moving the project directory breaks existing records (re-upload, or rewrite the path prefix in `metadata.sqlite`).
+- **Jobs are not persisted across restarts.** Quit or a crash cancels running jobs; the sidebar only lists jobs submitted in the current session.
 - **No reprojection on import.** If you import a raster in EPSG:4326, slope values will be wrong. The `normalize()` function will reproject for multi-raster algorithms.
 - **No tile caching.** `rio-tiler` re-reads the COG on every tile request. Fine for one user, will need an LRU on the path to multi-user.
-- **No WebSocket.** Frontend polls jobs once per second. WebSocket adds reconnect logic that's not worth it for MVP.
+- **No WebSocket.** Frontend polls jobs once per second. WebSocket/SSE push is on the roadmap.
 - **No vector data.** Will need GeoPackage support + matching pipeline before adding any vector algorithm.
 - **`entry_points`-based plugins not used.** `registry.load_builtins()` only scans the `builtin/` subpackage. Adding a `user_plugins/` scan when the time comes is a 3-line change.
 - **Delete is reference-checked.** `DELETE /rasters/{id}` returns 409 if a pending/running job uses the raster as input, or (without `?force=true`) if finished jobs do. Deleting a result raster clears `output_id` on the producing job.
