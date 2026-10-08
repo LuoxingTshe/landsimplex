@@ -6,7 +6,18 @@ frontend/node_modules/
 frontend/dist/
 .DS_Store
 *.pyc
-data/samples/*.tif
-data/samples/*.aux.xml
+# Case / sample data — never commit
+data/
+*.tif
+*.tiff
+*.aux.xml
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.zip
+*.tar.gz
+*.sqlite
 .claude/settings.local.json
 *.swp
