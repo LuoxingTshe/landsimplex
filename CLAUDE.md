@@ -1,6 +1,6 @@
 # LandSimplex — 开发指南
 
-**当前版本：** `v1.0.1-beta.2`（2026-10-09，修复 `--reload` 后 Quit 退不干净）。版本号同步位置：`backend/app/main.py`（FastAPI version）、`backend/pyproject.toml`（PEP 440 写法 `1.0.1b2`）、`frontend/package.json` + `package-lock.json`；发版说明写在 `CHANGELOG.md`，打 tag `vX.Y.Z-beta.N`。
+**当前版本：** `v1.0.2-beta.1`（2026-10-09，n=4 四面体探针视图；前端只保留 threshold_probability）。版本号同步位置：`backend/app/main.py`（FastAPI version）、`backend/pyproject.toml`（PEP 440 写法 `1.0.2b1`）、`frontend/package.json` + `package-lock.json`；发版说明写在 `CHANGELOG.md`，打 tag `vX.Y.Z-beta.N`。
 
 ## 环境与启动
 
@@ -9,7 +9,7 @@
   - **必须从项目根目录运行**，justfile 在根目录。
 - **前端：** `just frontend`
 - **访问：** http://localhost:5173
-- **示例数据：** `data/samples/`（DEM.tif、TestDoc.tif，已 gitignore）；运行时数据仍在 `backend/data/`。合成 WLC 测试数据：`conda run -n landplan python scripts/make_wlc_sample.py` → `data/samples/wlc_test/`（A_east / B_north / C_center，100×100）。
+- **示例数据：** `data/samples/`（DEM.tif、TestDoc.tif，已 gitignore）；运行时数据仍在 `backend/data/`。合成 WLC 测试数据：`conda run -n landplan python scripts/make_wlc_sample.py` → `data/samples/wlc_test/`（A_east / B_north / C_center / D_waves，100×100；n=4 四面体用 A–D）。
 - **Conda env 名保持 `landplan`**（项目已更名为 LandSimplex，env 沿用旧名以免重建环境）。
 - **首次安装（macOS arm64）：** `brew install just && brew install --cask miniforge`，然后 `just setup`（建 conda 环境 + `npm install`）。测试依赖需另装：`conda run -n landplan pip install pytest`（pytest 不在 `environment.yml` 中）。
 - **nimplex：** `backend/vendor/nimplex.so` 已是 arm64 预编译版，开箱可用，无需装 Nim。
@@ -49,9 +49,16 @@ frontend/src/
   api.ts    — 类型化 fetch 封装
   map.ts    — OpenLayers 地图；探针光标图层（onMapClick / setProbeFootprint）
   ui.ts     — 侧边栏（原生 DOM，无框架）
-  simplexView.ts — 单纯形探针视图（SVG：n=2 线段、n=3 三角形；阈值滑块本地重算）
+  simplexView.ts — 单纯形探针视图（SVG：n=2 线段、n=3 三角形、n=4 可拖拽旋转四面体；阈值滑块本地重算）
+  simplexGeom.ts — 探针纯几何（无 DOM）：bounds 可行域（n≤3 多边形裁剪 / 任意 n 顶点+棱枚举）、凸包、四面体投影与隐藏棱
 frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 ```
+
+## 前端只暴露 threshold_probability
+
+- `ui.ts` 的 `FRONTEND_ALGORITHMS` 白名单：前端算法下拉框只显示 `threshold_probability`（WLC阈值概率密度），并自动选中；"基础算法/复合分析"标签栏已删除。
+- **后端算法引擎全部保留**（slope、aspect、weighted_overlay、各 reclassify 等仍注册、仍可用 API 调用），只是前端不再暴露。
+- **原因（2026-10-09）**：用户想要概率图，却在 Weighted overlay 上开了单纯形采样，一次生成了 120 张中间结果图。用户明确只要 probability map，不要过程文件。不要再把其他算法加回前端，除非用户要求。
 
 ## 前端样式规范（Swiss Style）
 
@@ -158,7 +165,7 @@ frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 1. ✅ **删除时引用检查**（已完成，规则见下节）：避免删除栅格后留下孤儿 job 记录。
 2. ✅ **像素探针 + 权重空间单纯形视图 n=2/3**（v1.0.0-beta.1，规则见"单纯形探针"）。
 3. ✅ **修复 Quit 漏洞**（已完成）：lifespan 关闭阶段调用 `runner.shutdown()`，见"Quit 按钮"一节。
-4. **探针后续阶段**：阶段 3 = n=4 四面体（拖拽旋转、按深度排序）；阶段 4 = n=5/6（选 3 个权重做投影三角形，"其余"并入第三顶点，重叠格点聚合显示 + 平行坐标）。都只改 `simplexView.ts`，后端接口已支持任意 n。
+4. **探针后续阶段**：✅ 阶段 3 = n=4 四面体（拖拽旋转、按深度排序）；阶段 4 = n=5/6（选 3 个权重做投影三角形，"其余"并入第三顶点，重叠格点聚合显示 + 平行坐标 + 三角形格↔折线联动高亮）。几何放 `simplexGeom.ts`（`feasiblePolytope`、`convexHull` 可直接复用），绘制放 `simplexView.ts`；后端接口已支持任意 n。
 5. **`cog_path` 改存相对路径**：目前存绝对路径，项目目录一移动旧记录全部失效（beta 前曾手动重写过前缀）。
 6. **导入时处理地理坐标系（EPSG:4326）**：目前 slope 在度制坐标系上数值错误且无提示；至少导入时警告，或算法前自动重投影到投影 CRS。
 7. **瓦片缓存**：`rio-tiler` 每次请求重读 COG；加 LRU/磁盘缓存，利于多个扫描结果叠加对比。
@@ -217,6 +224,8 @@ def delete_raster(raster_id: str) -> Response:
 - 前端：栅格列表里可探针的结果带 `◎`（`isProbeable()` 按名字前缀判断，后端是最终权威）→ `state.probeTarget`；点地图 → `probePixel` → `simplexView.show()` + `setProbeFootprint()`。`Esc` 清除当前像素。
 - **`render()` 只重建 `body`**：masthead 和 `simplexView.el` 在 `initPanel()` 里只挂载一次。轮询任务时每秒 render，如果重建视图会丢 SVG、打断滑块拖动。新增侧边栏区块时往 `body` 里加，不要再 `panel().innerHTML = ...`。
 - 探针请求用 `probeToken` 丢弃过期响应（快速连点、切换目标时）。
+- **不画阈值切面**（Σwᵢvᵢ = t 的线/面）：试做过，用户认为太丑，已删除（2026-10-09）。通过/不通过只用格点颜色表达。
+- **n=4 四面体**：元素只建一次，拖拽时只重新投影 + 按深度从远到近重新 append（`threshold_probability` 的格点不受 200 上限约束，可上千个）。视角 `orbit` 存在视图闭包里，换像素保留，双击复位。隐藏棱：轮廓为三角形时内侧顶点若在前面之后则其 3 条棱虚线；轮廓为四边形时较远的对角线虚线。
 
 ### Quit 按钮（关闭前后端）
 

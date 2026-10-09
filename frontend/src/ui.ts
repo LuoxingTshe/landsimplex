@@ -105,6 +105,9 @@ function buildSimplexTable(activeN: number, activeT: number): HTMLElement {
   return wrap;
 }
 
+// The backend registers every algorithm; the UI only offers these.
+const FRONTEND_ALGORITHMS = new Set(["threshold_probability"]);
+
 const state = {
   rasters: [] as Raster[],
   algorithms: [] as AlgorithmInfo[],
@@ -112,7 +115,6 @@ const state = {
   jobs: [] as Job[],
   currentTab: "rasters" as "rasters" | "scenes",
   scenes: [] as Scene[],
-  currentAlgoTab: "builtin" as "builtin" | "composite",
   probeTarget: null as string | null,   // result raster id the map probe reads
 };
 
@@ -125,7 +127,7 @@ let body: HTMLElement;
 let simplexView: SimplexView;
 
 export async function initPanel(): Promise<void> {
-  state.algorithms = await listAlgorithms();
+  state.algorithms = (await listAlgorithms()).filter((a) => FRONTEND_ALGORITHMS.has(a.name));
   await Promise.all([refreshRasters(), refreshScenes()]);
   panel().innerHTML = `
     <header class="masthead">
@@ -705,28 +707,9 @@ function algorithmSection(): HTMLElement {
   const el = document.createElement("section");
   el.innerHTML = `<h2>Run algorithm</h2>`;
 
-  // Tab bar: builtin vs composite. Filters the algorithm dropdown below.
-  const algoTabs = document.createElement("div");
-  algoTabs.className = "tabs";
-  const tabs = [
-    { id: "builtin", label: "基础算法" },
-    { id: "composite", label: "复合分析" },
-  ] as const;
-  for (const t of tabs) {
-    const btn = document.createElement("button");
-    btn.textContent = t.label;
-    btn.className = state.currentAlgoTab === t.id ? "active" : "";
-    btn.onclick = () => { state.currentAlgoTab = t.id; render(); };
-    algoTabs.appendChild(btn);
-  }
-  el.appendChild(algoTabs);
-
-  const visibleAlgos = state.algorithms.filter(
-    (a) => (state.currentAlgoTab === "composite") === !!a.is_composite,
-  );
   const select = document.createElement("select");
   select.innerHTML = `<option value="">— Choose —</option>` +
-    visibleAlgos.map((a) => `<option value="${a.name}">${a.display}</option>`).join("");
+    state.algorithms.map((a) => `<option value="${a.name}">${a.display}</option>`).join("");
   el.appendChild(select);
 
   const form = document.createElement("div");
@@ -951,6 +934,10 @@ function algorithmSection(): HTMLElement {
     recompute();
   };
 
+  if (state.algorithms.length === 1) {
+    select.value = state.algorithms[0].name;
+    select.dispatchEvent(new Event("change"));
+  }
   return el;
 }
 

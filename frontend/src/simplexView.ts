@@ -5,10 +5,16 @@
  * the pixel's layer values every lattice point's pass/fail is one dot product.
  * The threshold slider re-evaluates locally without another backend request.
  *
- * Geometry: n=2 → segment, n=3 → triangle. n≥4 shows the readout only.
+ * Geometry: n=2 → segment, n=3 → triangle, n=4 → tetrahedron (drag to rotate,
+ * double-click resets). n≥5 shows the readout only.
  * The element is created once and kept alive across ui.ts re-renders.
  */
 import type { ProbeResult } from "./api";
+import {
+  type P3, type Pt, type WeightVec,
+  TETRA, TETRA_EDGES, boundsPolygon, dot, feasiblePolytope,
+  hiddenTetraEdges, rotate, toTetra,
+} from "./simplexGeom";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const W = 304;            // sidebar content width (352 − 2×24 padding)
@@ -17,9 +23,10 @@ const LETTERS = "ABCDEF";
 const DEFAULT_THRESHOLD = 0.7;
 const HINT_NO_TARGET = "Select a result with ◎, then click the map.";
 const HINT_TARGET = "Click the map to lock a pixel. Esc clears.";
+const ORBIT_HOME: Orbit = { yaw: 0.45, pitch: 0.3 };
+const DRAG_RAD_PER_PX = 0.01;
 
-type Pt = [number, number];
-type WeightVec = number[];
+interface Orbit { yaw: number; pitch: number }
 
 export interface SimplexView {
   el: HTMLElement;
@@ -55,6 +62,7 @@ export function createSimplexView(): SimplexView {
   let threshold = DEFAULT_THRESHOLD;
   let jobId: string | null = null;   // threshold resets only when the job changes
   let hasTarget = false;
+  const orbit: Orbit = { ...ORBIT_HOME };   // tetrahedron view angle, kept across pixels
 
   const setStatus = (text: string, isError = false) => {
     statusEl.textContent = text;
@@ -78,7 +86,8 @@ export function createSimplexView(): SimplexView {
     const pass = scores.map((s) => s > threshold);
 
     plotEl.replaceChildren();
-    if (n === 3) plotEl.appendChild(triangle(probe, scores, pass));
+    if (n === 4) plotEl.append(tetrahedron(probe, scores, pass, orbit), orbitHint());
+    else if (n === 3) plotEl.appendChild(triangle(probe, scores, pass));
     else if (n === 2) plotEl.appendChild(segment(probe, scores, pass));
     else plotEl.innerHTML = `<div class="sv-note">n = ${n}: geometric view arrives in a later phase.</div>`;
 
@@ -167,10 +176,15 @@ function triangle(p: ProbeResult, scores: number[], pass: boolean[]): SVGSVGElem
   ];
 
   svg.appendChild(poly(V, "sv-frame"));
-  const region = boundsPolygon(p, 3);
+  const region = boundsPolygon(p.min, p.max, 3);
   if (region) svg.appendChild(poly(region.map(toXY), "sv-bounds"));
 
-  drawPoints(svg, p, scores, pass, toXY, side / p.n_divisions);
+  const s = pointSize(side / p.n_divisions);
+  p.lattice.forEach((w, i) => {
+    const r = latticePoint(w, scores[i], pass[i]);
+    placePoint(r, toXY(w), s);
+    svg.appendChild(r);
+  });
 
   vertexLabel(svg, V[2][0], top - 18, "middle", p, 2);
   vertexLabel(svg, V[0][0], top + h + 22, "start", p, 0);
@@ -183,73 +197,130 @@ function segment(p: ProbeResult, scores: number[], pass: boolean[]): SVGSVGEleme
   const svg = svgEl(W, y + 40);
   const toXY = (w: WeightVec): Pt => [M + w[1] * (W - 2 * M), y];
   svg.appendChild(line([M, y], [W - M, y], "sv-frame"));
-  const region = boundsPolygon(p, 2);
+  const region = boundsPolygon(p.min, p.max, 2);
   if (region) {
     const [a, b] = region.map(toXY);
     svg.appendChild(line([a[0], y - 8], [b[0], y - 8], "sv-bounds"));
   }
-  drawPoints(svg, p, scores, pass, toXY, (W - 2 * M) / p.n_divisions);
+  const s = pointSize((W - 2 * M) / p.n_divisions);
+  p.lattice.forEach((w, i) => {
+    const r = latticePoint(w, scores[i], pass[i]);
+    placePoint(r, toXY(w), s);
+    svg.appendChild(r);
+  });
   vertexLabel(svg, M, y + 24, "start", p, 0);
   vertexLabel(svg, W - M, y + 24, "end", p, 1);
   return svg;
 }
 
-function drawPoints(
-  svg: SVGSVGElement, p: ProbeResult, scores: number[], pass: boolean[],
-  toXY: (w: WeightVec) => Pt, spacing: number,
-): void {
-  const s = Math.max(3, Math.min(10, spacing * 0.55));
-  p.lattice.forEach((w, i) => {
-    const [x, y] = toXY(w);
-    const r = document.createElementNS(SVG_NS, "rect");
-    r.setAttribute("x", (x - s / 2).toFixed(2));
-    r.setAttribute("y", (y - s / 2).toFixed(2));
-    r.setAttribute("width", s.toFixed(2));
-    r.setAttribute("height", s.toFixed(2));
-    r.setAttribute("class", `sv-pt ${pass[i] ? "pass" : "fail"}`);
-    const title = document.createElementNS(SVG_NS, "title");
-    const ws = w.map((x, j) => `${LETTERS[j]} ${x.toFixed(2)}`).join(" · ");
-    title.textContent = `${ws} → ${Number.isNaN(scores[i]) ? "—" : scores[i].toFixed(3)}`;
-    r.appendChild(title);
-    svg.appendChild(r);
-  });
-}
-
 /**
- * Feasible region of the min/max bounds, as polygon vertices in weight space
- * (Sutherland–Hodgman clip of the simplex by wᵢ ≥ minᵢ and wᵢ ≤ maxᵢ; the
- * constraints are linear, so clipping in barycentric coordinates is exact).
+ * n = 4: orthographic tetrahedron. Elements are built once; dragging only
+ * re-projects them and re-appends the lattice points far-to-near, so large
+ * lattices (threshold_probability is not capped at 200) stay smooth.
  */
-function boundsPolygon(p: ProbeResult, n: number): WeightVec[] | null {
-  if (!p.min && !p.max) return null;
-  let poly: WeightVec[] = Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
-  for (let i = 0; i < n; i++) {
-    const lo = p.min?.[i] ?? 0;
-    const hi = p.max?.[i] ?? 1;
-    if (lo > 0) poly = clip(poly, (w) => w[i] - lo, n === 2);
-    if (hi < 1) poly = clip(poly, (w) => hi - w[i], n === 2);
-  }
-  return poly.length ? poly : null;
+function tetrahedron(
+  p: ProbeResult, scores: number[], pass: boolean[], orbit: Orbit,
+): SVGSVGElement {
+  const scale = (W - 2 * M) / 2;     // circumradius 1 → fits the plot width
+  const cx = W / 2;
+  const cy = 22 + scale;
+  const svg = svgEl(W, cy + scale + 22);
+  svg.classList.add("sv-orbit");
+  const screen = (q: P3): Pt => [cx + scale * q[0], cy - scale * q[1]];
+  const project = (w: WeightVec): P3 => rotate(toTetra(w), orbit.yaw, orbit.pitch);
+
+  const edgeEls = TETRA_EDGES.map(() => svg.appendChild(line([0, 0], [0, 0], "sv-frame")));
+  const region = p.min || p.max ? feasiblePolytope(p.min, p.max, 4) : null;
+  const regionEls = (region?.edges ?? []).map(() => svg.appendChild(line([0, 0], [0, 0], "sv-bounds")));
+  const pointEls = p.lattice.map((w, i) => latticePoint(w, scores[i], pass[i]));
+  const s = pointSize((Math.sqrt(8 / 3) * scale) / p.n_divisions);   // edge length / T
+  const labelEls = TETRA.map((_, i) => {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("class", "sv-letter");
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("dominant-baseline", "central");
+    t.textContent = LETTERS[i];
+    return t;
+  });
+
+  const update = () => {
+    const V = TETRA.map((q) => rotate(q, orbit.yaw, orbit.pitch));
+    const VP = V.map(screen);
+    const hidden = new Set(hiddenTetraEdges(VP, V.map((q) => q[2])).map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
+    TETRA_EDGES.forEach(([a, b], k) => {
+      setLine(edgeEls[k], VP[a], VP[b]);
+      edgeEls[k].setAttribute("class", hidden.has(`${a}-${b}`) ? "sv-frame back" : "sv-frame");
+    });
+    region?.edges.forEach(([a, b], k) => {
+      setLine(regionEls[k], screen(project(region.vertices[a])), screen(project(region.vertices[b])));
+    });
+    const q = p.lattice.map(project);
+    const order = q.map((_, i) => i).sort((a, b) => q[a][2] - q[b][2]);
+    for (const i of order) {
+      const near = (q[i][2] + 1) / 2;   // 0 = far, 1 = near
+      placePoint(pointEls[i], screen(q[i]), s * (0.7 + 0.3 * near));
+      pointEls[i].setAttribute("opacity", (0.4 + 0.6 * near).toFixed(2));
+      svg.appendChild(pointEls[i]);
+    }
+    VP.forEach(([x, y], i) => {
+      const dx = x - cx, dy = y - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      labelEls[i].setAttribute("x", (x + (dx / d) * 12).toFixed(1));
+      labelEls[i].setAttribute("y", (y + (dy / d) * 12).toFixed(1));
+      svg.appendChild(labelEls[i]);
+    });
+  };
+  update();
+
+  let drag: Pt | null = null;
+  let frame = 0;
+  svg.addEventListener("pointerdown", (e) => {
+    drag = [e.clientX, e.clientY];
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    orbit.yaw += (e.clientX - drag[0]) * DRAG_RAD_PER_PX;
+    orbit.pitch = Math.max(-1.5, Math.min(1.5, orbit.pitch + (e.clientY - drag[1]) * DRAG_RAD_PER_PX));
+    drag = [e.clientX, e.clientY];
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; update(); });
+  });
+  const end = () => { drag = null; };
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+  svg.addEventListener("dblclick", () => {
+    Object.assign(orbit, ORBIT_HOME);
+    update();
+  });
+  return svg;
 }
 
-function clip(poly: WeightVec[], f: (w: WeightVec) => number, open: boolean): WeightVec[] {
-  const out: WeightVec[] = [];
-  const edges = open ? poly.length - 1 : poly.length;
-  if (open && poly.length === 1) return f(poly[0]) >= 0 ? poly : [];
-  for (let i = 0; i < edges; i++) {
-    const P = poly[i];
-    const Q = poly[(i + 1) % poly.length];
-    const fp = f(P);
-    const fq = f(Q);
-    if (fp >= 0) out.push(P);
-    if (fp * fq < 0) {
-      const t = fp / (fp - fq);
-      out.push(P.map((x, k) => x + (Q[k] - x) * t));
-    }
-    if (open && i === edges - 1 && fq >= 0) out.push(Q);
-  }
-  return out;
+function orbitHint(): HTMLElement {
+  const d = document.createElement("div");
+  d.className = "probe-sub";
+  d.textContent = "Drag to rotate · double-click resets";
+  return d;
+}
+
+function pointSize(spacing: number): number {
+  return Math.max(3, Math.min(10, spacing * 0.55));
+}
+
+function latticePoint(w: WeightVec, score: number, pass: boolean): SVGRectElement {
+  const r = document.createElementNS(SVG_NS, "rect");
+  r.setAttribute("class", `sv-pt ${pass ? "pass" : "fail"}`);
+  const title = document.createElementNS(SVG_NS, "title");
+  const ws = w.map((x, j) => `${LETTERS[j]} ${x.toFixed(2)}`).join(" · ");
+  title.textContent = `${ws} → ${Number.isNaN(score) ? "—" : score.toFixed(3)}`;
+  r.appendChild(title);
+  return r;
+}
+
+function placePoint(r: SVGRectElement, [x, y]: Pt, s: number): void {
+  r.setAttribute("x", (x - s / 2).toFixed(2));
+  r.setAttribute("y", (y - s / 2).toFixed(2));
+  r.setAttribute("width", s.toFixed(2));
+  r.setAttribute("height", s.toFixed(2));
 }
 
 // ---------------------------------------------------------------------------
@@ -264,19 +335,27 @@ function svgEl(w: number, h: number): SVGSVGElement {
 
 function poly(pts: Pt[], cls: string): SVGPolygonElement {
   const e = document.createElementNS(SVG_NS, "polygon");
-  e.setAttribute("points", pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" "));
+  setPoints(e, pts);
   e.setAttribute("class", cls);
   return e;
 }
 
+function setPoints(e: SVGPolygonElement, pts: Pt[]): void {
+  e.setAttribute("points", pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" "));
+}
+
 function line(a: Pt, b: Pt, cls: string): SVGLineElement {
   const e = document.createElementNS(SVG_NS, "line");
-  e.setAttribute("x1", String(a[0]));
-  e.setAttribute("y1", String(a[1]));
-  e.setAttribute("x2", String(b[0]));
-  e.setAttribute("y2", String(b[1]));
+  setLine(e, a, b);
   e.setAttribute("class", cls);
   return e;
+}
+
+function setLine(e: SVGLineElement, a: Pt, b: Pt): void {
+  e.setAttribute("x1", a[0].toFixed(2));
+  e.setAttribute("y1", a[1].toFixed(2));
+  e.setAttribute("x2", b[0].toFixed(2));
+  e.setAttribute("y2", b[1].toFixed(2));
 }
 
 /** Vertex label: bold letter + truncated layer name, e.g. "A slope_reclassify…". */
@@ -298,10 +377,4 @@ function vertexLabel(
   name.textContent = full.length > 22 ? `${full.slice(0, 21)}…` : full;
   t.append(letter, name);
   svg.appendChild(t);
-}
-
-function dot(w: number[], v: number[]): number {
-  let s = 0;
-  for (let i = 0; i < w.length; i++) s += w[i] * v[i];
-  return s;
 }

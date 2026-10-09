@@ -173,6 +173,9 @@
       .sv-note { font-size: 11px; color: var(--mute); padding: calc(var(--u) * 2) 0; border-bottom: 1px solid var(--hair); }
       .sv-frame { fill: none; stroke: var(--ink); stroke-width: 1; }
       .sv-bounds { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; }
+      .sv-frame.back { stroke: var(--mute); stroke-dasharray: 2 3; }
+      .sv-orbit { cursor: grab; touch-action: none; user-select: none; }
+      .sv-orbit:active { cursor: grabbing; }
       .sv-pt.pass { fill: var(--red); }
       .sv-pt.fail { fill: var(--paper); stroke: var(--mute); stroke-width: 1; }
       .sv-pt:hover { stroke: var(--ink); stroke-width: 2; }

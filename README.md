@@ -2,7 +2,7 @@
 
 > **LandSimplex: A Simplex-Sampled Weight-Space Sensitivity Prototype for Raster-Based Landscape Suitability Analysis**
 >
-> **Beta 1.0** (`v1.0.0-beta.1`) — first usable release. Research software: single-user, local-only, APIs may still change. See [CHANGELOG.md](CHANGELOG.md).
+> **Beta 1.0.2** (`v1.0.2-beta.1`). Research software: single-user, local-only, APIs may still change. See [CHANGELOG.md](CHANGELOG.md).
 
 LandSimplex runs weighted linear combination (WLC) suitability analysis over the whole space of weight choices instead of one hand-picked weight vector. It samples the weight simplex on a uniform lattice, maps how often each pixel stays suitable, and lets you click any pixel to see *which* weight combinations make it pass.
 
@@ -21,7 +21,8 @@ LandSimplex runs weighted linear combination (WLC) suitability analysis over the
 | OpenLayers map with layer toggle + delete | Job persistence across server restarts |
 | Process-pool jobs with polled progress + per-result stats-driven rescale | |
 | Sentinel-2 / Landsat 8/9 bundle ingestion | |
-| **Pixel probe + weight-space simplex view**: click a pixel, see every lattice weight vector coloured pass/fail on a simplex (n = 2 segment, n = 3 triangle) with the lattice pass rate and a live threshold slider | Simplex geometry for n ≥ 4 (tetrahedron, projections) |
+| **Pixel probe + weight-space simplex view**: click a pixel, see every lattice weight vector coloured pass/fail on a simplex (n = 2 segment, n = 3 triangle, n = 4 rotatable tetrahedron) with the lattice pass rate and a live threshold slider | Projection views for n = 5, 6 |
+| UI focused on one analysis: `WLC阈值概率密度` (threshold probability); every other algorithm stays in the backend, callable over the API | |
 | In-app Quit button that stops backend + frontend dev servers | |
 
 ## Prerequisites
@@ -70,9 +71,9 @@ Open <http://localhost:5173>. The **Quit** button at the top right of the sideba
 conda run -n landplan python scripts/make_wlc_sample.py
 ```
 
-This writes three 100×100 factor rasters in [0, 1] to `data/samples/wlc_test/` (gitignored): `A_east` (west→east gradient), `B_north` (south→north gradient) and `C_center` (central bump). Upload all three and use them as `layer_0..2` for `WLC阈值概率密度` or `weighted_overlay` (see steps 7 and 11 below).
+This writes four 100×100 factor rasters in [0, 1] to `data/samples/wlc_test/` (gitignored): `A_east` (west→east gradient), `B_north` (south→north gradient), `C_center` (central bump) and `D_waves` (smooth checker of waves). Use A–C as `layer_0..2` for the triangle view, or all four as `layer_0..3` for the tetrahedron (see steps 3 and 5 below).
 
-**A real DEM** for slope / aspect / sun score. Two easy options:
+**A real DEM** for slope / aspect / sun score (API only, see below). Two easy options:
 
 - SRTM 30m tile from <https://search.earthdata.nasa.gov> (NASA Earthdata login)
 - For a quick smoke test: any single-band GeoTIFF will work, as long as it has
@@ -83,20 +84,24 @@ Large files (hundreds of MB uncompressed) are supported — see *Large raster su
 
 ## How to verify it works
 
-The algorithm panel has two tabs: **基础算法 (builtin)** for atomic algorithms and **复合分析 (composite)** for orchestrated analyses.
+The UI offers a single algorithm, **WLC阈值概率密度** (`threshold_probability`), preselected in the *Run algorithm* panel. It produces one probability map per job — no per-sample intermediate rasters.
 
-1. **Upload a DEM.** Watch the side panel — it should appear under "Rasters" within a few seconds. Files of any size are supported; large files (> 200 MiB uncompressed) use the memory-bounded two-step COG path described below.
-2. **Check it on the map.** Tick the checkbox. The map should zoom to the raster extent.
-3. **Run slope or aspect.** In the **基础算法** tab pick "Slope (degrees)" or "Aspect (degrees)" → choose your DEM → Run. Aspect output is 0-360° (compass, SW = 225°); flat areas are NaN. Result is auto-loaded; render range comes from per-result `stats_min`/`stats_max` computed when the COG was written.
-4. **Run reclassified slope / aspect.** In the **基础算法** tab pick "坡度重分类 (Slope → Score)" or "坡向重分类 (Aspect → Score)" → choose your DEM → Run. These wrap the raw slope/aspect algorithms and apply reclassification to a [0,1] suitability score. Slope reclassify defaults: 0°→1.0, ≥45°→0.0, gentler-terrain-favouring (toggle `invert` to reverse). Aspect reclassify defaults: peak at 225° (south-west) → 1.0, cosine-bell fall-off to 0 at ±180°; flat areas remain NaN. Both appear under 基础算法 despite reusing composite helpers internally.
-5. **Run weighted overlay.** Upload a second raster (any), then pick "Weighted overlay" → 2 layers → assign each a raster → weights 1 and 1 → Run. The result raster covers the union of the two inputs' extents, which validates that `normalize()` correctly handles different CRS/resolution/bounds.
-6. **Run a composite analysis.** Switch to the **复合分析** tab → pick "景观日照评分 (Landscape Sun Score)" → choose your DEM → Run. The single job internally invokes aspect, slope, two reclassifications, and weighted_overlay, producing a single 0-1 raster. SW-facing gentle terrain reads as the high end of the colour ramp.
-7. **Run threshold probability density.** Switch to the **复合分析** tab → pick "WLC阈值概率密度" → choose 2+ rasters (pre-normalised to 0-1, e.g. slope_reclassify / aspect_reclassify outputs) → set `target_score` (e.g. 0.7). Toggle **单纯形采样** to adjust `T` and set per-weight-factor bounds (e.g. limit the first factor to `[0, 0.5]` via ≥/≤ inputs) — the live counter shows the number of simplex samples after bounds filtering. Submit → Run. The result renders with a cold→hot colormap (blue=low probability, green/yellow=mid, red=high) so areas of high probability density are immediately obvious.
-8. **Delete a layer.** Click the red ✕ button on any raster row in the side panel. The layer is removed from the map, the COG file is deleted from disk, and the catalogue record is removed.
-9. **Sweep a parameter space — simplex sampling.** Upload two or three rasters, pick `weighted_overlay`, and tick the **单纯形采样** checkbox below the layer rows. Set T (n_divisions) = 4 — the counter shows "将运行 5 次" for n=2 layers (C(2+4-1, 4) = 5), jumping to "将运行 15 次" if you bump the layer count to 3. The reference table on the right shows sample counts for n=2..6 and T=1..10 with the active cell highlighted; values exceeding the 200-sample cap render red with ↑. Submit — the jobs panel shows one sweep parent + N children with labels like `weights=[0.25,0.25,0.5]`. Tick the checkbox next to any succeeded child to overlay its result on the map (multiple can be visible at once for comparison). Children are NOT auto-loaded.
-10. **Constrain the simplex with per-component bounds.** With 单纯形采样 active, each weight row grows a small `≥ [0] ≤ [1]` pair after the base-weight input. Set e.g. `max[0] = 0.5`, `max[1] = 0.5` for a 3-layer overlay at T=4 — the counter switches from "将运行 15 次" to "将运行 9 次" (the backend's `POST /jobs/preview` returns the post-filter exact count; local debounce). Bounds where `sum(min) > 1`, `sum(max) < 1`, any value outside `[0, 1]`, or where filtering eliminates every lattice point all surface inline as red error messages and block Run. If exactly one lattice point survives, the submit collapses to a single (non-sweep) job using that one combination — not the base weights.
-11. **Probe a pixel in weight space.** Run `WLC阈值概率密度` on the synthetic factors (target 0.5, 单纯形采样 on, T = 10 → 66 weight vectors). In the raster list, click **◎** on the result: it becomes the probe target, loads on the map, and the cursor turns into a crosshair. Click the map. A red frame locks the pixel and the **Weight space** view at the top of the sidebar draws the triangle (A, B, C at the vertices): red squares are weight vectors whose score passes the threshold, hollow squares fail. The big number is the lattice pass rate, which equals the map value at that pixel (✓). For the synthetic data: centre ≈ 90.9 %, north-east corner ≈ 68.2 %, south-west corner 0 %. Hover a square for its weights and score; drag the threshold slider to re-evaluate instantly (the readout then notes it differs from the map). `Esc` clears the pixel; click ◎ again to stop probing. Works the same on a `weighted_overlay` sweep child (the slider then sets the threshold). Two-factor jobs draw a segment; four or more factors show the readout only for now.
-12. **Quit.** Click **Quit** (top right), confirm, and both servers shut down; running jobs are cancelled.
+1. **Upload the factors.** Upload `A_east`, `B_north`, `C_center` (and `D_waves`) from `data/samples/wlc_test/`. They appear under "Rasters" within a few seconds. Files of any size are supported; large files (> 200 MiB uncompressed) use the memory-bounded two-step COG path described below.
+2. **Check one on the map.** Tick the checkbox. The map should zoom to the raster extent.
+3. **Run threshold probability density.** Choose 2–6 rasters (pre-normalised to 0-1) as layers → set `target_score` (e.g. 0.5). Toggle **单纯形采样** to set `T`; the live counter shows how many weight vectors are evaluated. Run. The job internally evaluates WLC for every lattice weight vector and writes a single [0,1] probability map, rendered with a cold→hot colormap (blue = low, red = high).
+4. **Constrain the simplex with per-component bounds.** With 单纯形采样 active, each weight row grows a `≥ [0] ≤ [1]` pair. Set e.g. `max[0] = 0.5`; the counter drops to the number of lattice points that survive (the backend's `POST /jobs/preview` returns the exact count). Bounds where `sum(min) > 1`, `sum(max) < 1`, any value outside `[0, 1]`, or where filtering eliminates every lattice point surface inline as red errors and block Run.
+5. **Probe a pixel in weight space.** Run on A–C (target 0.5, T = 10 → 66 weight vectors). In the raster list, click **◎** on the result: it becomes the probe target, loads on the map, and the cursor turns into a crosshair. Click the map. A red frame locks the pixel and the **Weight space** view at the top of the sidebar draws the triangle (A, B, C at the vertices): red squares are weight vectors whose score passes the threshold, hollow squares fail. The big number is the lattice pass rate, which equals the map value at that pixel (✓). For the synthetic data: centre ≈ 90.9 %, north-east corner ≈ 68.2 %, south-west corner 0 %. Hover a square for its weights and score; drag the threshold slider to re-evaluate instantly (the readout then notes it differs from the map). `Esc` clears the pixel; click ◎ again to stop probing. With four factors (A–D) the view is a tetrahedron: drag to rotate, double-click to reset; nearer points are larger, hidden edges dashed, min/max bounds drawn as a dashed wireframe. Two factors draw a segment; five or six show the readout only for now.
+6. **Delete a layer.** Click the red ✕ button on any raster row in the side panel. The layer is removed from the map, the COG file is deleted from disk, and the catalogue record is removed.
+7. **Quit.** Click **Quit** (top right), confirm, and both servers shut down; running jobs are cancelled.
+
+**Other algorithms (API only).** `slope`, `aspect`, `slope_reclassify`, `aspect_reclassify`, `weighted_overlay` and `landscape_sun_score` are still registered (`GET /algorithms`) and run through `POST /jobs`, e.g.
+
+```bash
+curl -X POST localhost:8765/jobs -H 'Content-Type: application/json' \
+  -d '{"algorithm": "slope_reclassify", "inputs": {"dem": "<raster_id>"}}'
+```
+
+A `weighted_overlay` job with `param_ranges.weights = {"kind": "simplex", ...}` is a parameter sweep: one parent plus one result raster per weight vector (≤ 200). Use `threshold_probability` when you only want the probability map.
 
 ## What lives where
 
@@ -207,7 +212,7 @@ frontend/
     simplexView.ts         # weight-space simplex view (SVG) for the pixel probe
 
 scripts/
-  make_wlc_sample.py       # synthetic 3-factor WLC test rasters
+  make_wlc_sample.py       # synthetic 4-factor WLC test rasters
 ```
 
 ### Interface design
@@ -270,7 +275,7 @@ A composite algorithm orchestrates two or more registered algorithms to produce 
 
 `threshold_probability` demonstrates internal simplex sweep within a composite: its `run()` uses nimplex directly to generate C(n+T-1,T) weight vectors, filters them by optional per-weight-factor `min`/`max` bounds (mirroring the constraints from `sweep.py`), calls `_run_sub("weighted_overlay", ...)` for each survivor, thresholds at `target_score`, and accumulates `1/N` into a probability map. The large-raster path inlines the WLC tile computation to avoid creating a full-size intermediate suitability array per sample. `DynamicInputSpec.paired_param="weights"` reuses the frontend simplex UI (checkbox, T input, per-layer weight inputs, per-weight ≥/≤ bounds) with zero frontend changes. The `jobs.py` interceptor detects `is_composite` and redirects `param_ranges` into `params["_internal_sweep"]` so the simplex sweep stays in-process rather than creating sweep children. The `n_divisions` ParamSpec is removed — T comes from the simplex spec, with a kwarg fallback for backward compat. The output is a single `probability` raster ∈ [0,1]; there are no sweep parent/child jobs.
 
-Frontend separation: each `AlgorithmInfo` carries `is_composite: bool`. The algorithm panel in `ui.ts` has a `基础算法 / 复合分析` tab bar that filters the dropdown by this flag — adding a new composite is zero-change frontend.
+Frontend exposure: `ui.ts` filters `GET /algorithms` through the `FRONTEND_ALGORITHMS` allowlist (currently only `threshold_probability`, preselected). Each `AlgorithmInfo` still carries `is_composite: bool`; the earlier `基础算法 / 复合分析` tab bar was removed along with the other algorithms' UI.
 
 ### Parameter sweep / 区间参数 (`jobs/sweep.py`)
 
@@ -344,7 +349,7 @@ The tiled GTiff intermediate is always written window-by-window (no full-array c
 
 ## Known limitations (beta)
 
-- **Simplex geometry only for n = 2 and 3.** Four or more factors show the numeric readout only; tetrahedron (n = 4) and projection views (n = 5, 6) are planned.
+- **Simplex geometry only for n ≤ 4.** Five or six factors show the numeric readout only; projection views (n = 5, 6) are planned.
 - **Exact ties at the threshold.** The map is computed in float32, the probe in float64. A weight vector whose score lands exactly on the threshold (possible with coarse class scores like 0.2 / 0.4) can flip, so the probe rate may differ from the map by 1/N.
 - **Absolute paths in the catalogue.** `rasters.cog_path` stores absolute paths; moving the project directory breaks existing records (re-upload, or rewrite the path prefix in `metadata.sqlite`).
 - **Jobs are not persisted across restarts.** Quit or a crash cancels running jobs; the sidebar only lists jobs submitted in the current session.

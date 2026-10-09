@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.2-beta.1 — 2026-10-09
+
+### Added
+- **Tetrahedron view for 4 factors.** The probe now draws n = 4 weight space as a tetrahedron: drag to rotate, double-click to reset. Points are depth-sorted (farther points smaller and fainter) and hidden edges are dashed. Min/max bounds are drawn as the wireframe of the feasible polytope.
+- `scripts/make_wlc_sample.py` writes a fourth factor, `D_waves`, for trying the tetrahedron.
+
+### Changed
+- **The UI offers only `WLC阈值概率密度` (`threshold_probability`)**, preselected; the other algorithms stay registered in the backend and callable over the API. The builtin/composite tab bar is gone.
+- Probe geometry moved to `frontend/src/simplexGeom.ts` (no DOM), with bounds-region vertex enumeration for any n.
+- README usage rewritten for the single-algorithm UI; other algorithms documented as API-only.
+
 ## v1.0.1-beta.2 — 2026-10-09
 
 ### Fixed
