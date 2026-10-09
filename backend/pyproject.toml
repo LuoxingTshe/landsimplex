@@ -1,6 +1,6 @@
 [project]
 name = "landsimplex-backend"
-version = "1.0.1b1"
+version = "1.0.1b2"
 description = "LandSimplex backend - simplex-sampled weight-space sensitivity for raster suitability analysis"
 requires-python = ">=3.11"
 

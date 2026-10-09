@@ -8,6 +8,8 @@ import multiprocessing
 import os
 import signal
 import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,12 +29,21 @@ def _terminate_server() -> None:
     os.kill(target, signal.SIGTERM)
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Runs on every worker exit, including `--reload` restarts. The pool lives in a
+    # module global of this worker, so if we don't kill it here its children are
+    # orphaned and keep `conda run`'s stdout open, leaving `just backend` hanging.
+    runner.shutdown()
+
+
 def create_app() -> FastAPI:
     ensure_dirs()
     store.init_db()
     registry.load_builtins()  # populate the algorithm registry in this process
 
-    app = FastAPI(title="LandSimplex", version="1.0.1-beta.1")
+    app = FastAPI(title="LandSimplex", version="1.0.1-beta.2", lifespan=_lifespan)
 
     app.add_middleware(
         CORSMiddleware,

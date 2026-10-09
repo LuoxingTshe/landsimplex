@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.1-beta.2 — 2026-10-09
+
+### Fixed
+- **Quit after `--reload` left `just backend` hanging.** A reload replaced the uvicorn worker but orphaned the old worker's job-pool processes, which kept `conda run`'s stdout open. The pool is now shut down in the FastAPI lifespan, so it is cleaned up on every worker exit, reloads included.
+
 ## v1.0.1-beta.1 — 2026-10-08
 
 ### Fixed

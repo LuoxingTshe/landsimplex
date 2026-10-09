@@ -1,6 +1,6 @@
 # LandSimplex — 开发指南
 
-**当前版本：** `v1.0.1-beta.1`（2026-10-08，修正提交作者归属）。版本号同步位置：`backend/app/main.py`（FastAPI version）、`backend/pyproject.toml`（PEP 440 写法 `1.0.1b1`）、`frontend/package.json` + `package-lock.json`；发版说明写在 `CHANGELOG.md`，打 tag `vX.Y.Z-beta.N`。
+**当前版本：** `v1.0.1-beta.2`（2026-10-09，修复 `--reload` 后 Quit 退不干净）。版本号同步位置：`backend/app/main.py`（FastAPI version）、`backend/pyproject.toml`（PEP 440 写法 `1.0.1b2`）、`frontend/package.json` + `package-lock.json`；发版说明写在 `CHANGELOG.md`，打 tag `vX.Y.Z-beta.N`。
 
 ## 环境与启动
 
@@ -157,7 +157,7 @@ frontend/index.html — 全部样式（Swiss 风格，CSS 变量在 :root）
 
 1. ✅ **删除时引用检查**（已完成，规则见下节）：避免删除栅格后留下孤儿 job 记录。
 2. ✅ **像素探针 + 权重空间单纯形视图 n=2/3**（v1.0.0-beta.1，规则见"单纯形探针"）。
-3. **修复 Quit 漏洞**（小，约 5 行）：lifespan 关闭阶段调用 `runner.shutdown()`，见"Quit 按钮"一节的已知漏洞。
+3. ✅ **修复 Quit 漏洞**（已完成）：lifespan 关闭阶段调用 `runner.shutdown()`，见"Quit 按钮"一节。
 4. **探针后续阶段**：阶段 3 = n=4 四面体（拖拽旋转、按深度排序）；阶段 4 = n=5/6（选 3 个权重做投影三角形，"其余"并入第三顶点，重叠格点聚合显示 + 平行坐标）。都只改 `simplexView.ts`，后端接口已支持任意 n。
 5. **`cog_path` 改存相对路径**：目前存绝对路径，项目目录一移动旧记录全部失效（beta 前曾手动重写过前缀）。
 6. **导入时处理地理坐标系（EPSG:4326）**：目前 slope 在度制坐标系上数值错误且无提示；至少导入时警告，或算法前自动重投影到投影 CRS。
@@ -223,7 +223,7 @@ def delete_raster(raster_id: str) -> Response:
 - 侧边栏 masthead 右上角 `.quit` 按钮 → `shutdownApp()`：先 `POST /shutdown`（后端），再 `POST /__shutdown`（Vite 插件，见 `frontend/vite.config.ts`），最后渲染 `.halted` 页面。
 - 后端 `_terminate_server()`（`main.py`）先 `runner.shutdown()` 杀掉进程池（否则运行中的任务会阻塞退出），再 SIGTERM：`--reload` 下发给 reloader 父进程（`multiprocessing.parent_process()` 非 None），否则发给自己。
 - 两个端点都校验 `Origin`（跨站简单 POST 不走 CORS 预检），非前端来源返回 403。
-- **已知漏洞（未修）：`--reload` 重启后 Quit 退不干净。** `runner._executor` 是进程内的模块变量。`--reload` 重启 uvicorn worker 时，旧 worker 的进程池子进程会变成孤儿（父进程 = 1）。新 worker 的 `_executor` 是 None，`runner.shutdown()` 杀不到它们。孤儿子进程和 `multiprocessing.resource_tracker` 继续占着 `conda run` 的 stdout 管道，`conda run` / `just backend` 一直挂着（端口已释放）。复现：跑一个任务 → 改任意后端文件触发 reload → 点 Quit → `pgrep -fl spawn_main` 仍有进程。2026-10-08 实测出现。**修法：** 在 FastAPI lifespan 的关闭阶段调用 `runner.shutdown()`，每次 worker 退出（含 reload）都清理进程池。
+- **lifespan 关闭阶段也调用 `runner.shutdown()`**（`main.py` `_lifespan`）。`runner._executor` 是 worker 进程内的模块变量；`--reload` 重启 worker 时若不在此清理，旧进程池子进程会变成孤儿（父进程 = 1），继续占着 `conda run` 的 stdout 管道，`just backend` 挂住不退出（2026-10-08 实测，2026-10-09 修复）。验证：跑任务 → 改后端文件触发 reload → `pgrep -fl spawn_main` 只剩新 worker → Quit 后全部消失。
 
 ## SQLite 存储
 
