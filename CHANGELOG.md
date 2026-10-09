@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.3-beta.1 — 2026-10-09
+
+### Added
+- **Projection view for 5–6 factors.** Two chosen weights (Left / Right selects) keep their own vertices, the top vertex is the sum of the rest. Weight vectors that land on the same spot are aggregated into one cell whose red fill height is the share that passes; hover for the count. Min/max bounds are drawn as the projected feasible region.
+- **Parallel coordinates** under the projection: one axis per weight plus a score axis with the threshold marked; failing vectors grey, passing red. Clicking a cell highlights its weight vectors; clicking empty space clears.
+- `scripts/make_wlc_sample.py` writes two more factors, `E_ring` and `F_stripes`, for trying n = 5 and 6.
+
 ## v1.0.2-beta.1 — 2026-10-09
 
 ### Added

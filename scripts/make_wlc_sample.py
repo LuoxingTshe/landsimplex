@@ -1,4 +1,4 @@
-"""Generate a synthetic 4-factor WLC test set (100×100, values in [0, 1]).
+"""Generate a synthetic 6-factor WLC test set (100×100, values in [0, 1]).
 
     conda run -n landplan python scripts/make_wlc_sample.py [out_dir]
 
@@ -7,6 +7,8 @@ Writes to data/samples/wlc_test/ by default (gitignored):
   B_north.tif   factor B: 0 → 1 south to north
   C_center.tif  factor C: Gaussian bump, 1 at the centre
   D_waves.tif   factor D: 4×4 checker of smooth waves (use A–D for the n=4 tetrahedron)
+  E_ring.tif    factor E: ring of radius 35 around the centre
+  F_stripes.tif factor F: diagonal stripes (use A–E / A–F for the n=5/6 projection view)
   wlc_3band.tif factors A–C as one 3-band file (reference only;
                 each algorithm input reads band 1, so upload the single-band files)
 
@@ -34,6 +36,8 @@ def main(out_dir: Path) -> None:
         "B_north": 1 - y / (H - 1),
         "C_center": np.exp(-((x - 50) ** 2 + (y - 50) ** 2) / (2 * 25**2)),
         "D_waves": 0.5 + 0.5 * np.sin(2 * np.pi * x / 50) * np.cos(2 * np.pi * y / 50),
+        "E_ring": np.exp(-((np.hypot(x - 50, y - 50) - 35) ** 2) / (2 * 8**2)),
+        "F_stripes": 0.5 + 0.5 * np.sin(2 * np.pi * (x + y) / 40),
     }
     profile = dict(driver="GTiff", height=H, width=W, dtype="float32", crs=CRS, transform=TRANSFORM)
     for name, arr in factors.items():

@@ -3,7 +3,8 @@
  *
  * Weight vectors are barycentric coordinates on the (n−1)-simplex. This module
  * holds the bounds region (2-D clip for n ≤ 3, vertex/edge enumeration for any
- * n), a convex hull, and the n=4 tetrahedron projection.
+ * n), a convex hull, the n=4 tetrahedron projection and the n≥5 merged
+ * triangle projection.
  */
 
 export type Pt = [number, number];
@@ -227,4 +228,30 @@ export function hiddenTetraEdges(p: Pt[], depth: number[]): [number, number][] {
     return [z1 < z2 ? d1 : d2];
   }
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// n ≥ 5: merged projection onto a triangle
+// ---------------------------------------------------------------------------
+
+/** Barycentric position on the projection triangle: (wₐ, w_b, everything else). */
+export function mergeProject(w: WeightVec, a: number, b: number): P3 {
+  return [w[a], w[b], 1 - w[a] - w[b]];
+}
+
+/**
+ * Lattice indices grouped by their projected position. Lattice weights are
+ * multiples of 1/T, so (round(wₐ·T), round(w_b·T)) is an exact key.
+ */
+export function groupByProjection(
+  lattice: WeightVec[], a: number, b: number, T: number,
+): Map<string, number[]> {
+  const groups = new Map<string, number[]>();
+  lattice.forEach((w, i) => {
+    const key = `${Math.round(w[a] * T)},${Math.round(w[b] * T)}`;
+    const members = groups.get(key);
+    if (members) members.push(i);
+    else groups.set(key, [i]);
+  });
+  return groups;
 }

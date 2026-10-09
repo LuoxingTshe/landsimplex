@@ -180,6 +180,20 @@
       .sv-pt.fail { fill: var(--paper); stroke: var(--mute); stroke-width: 1; }
       .sv-pt:hover { stroke: var(--ink); stroke-width: 2; }
       .sv-letter { font: 700 13px var(--font); fill: var(--ink); }
+      .sv-axes { display: flex; align-items: center; gap: calc(var(--u) * 2); font-size: 11px; color: var(--mute); margin-top: var(--u); }
+      .sv-axes label { display: flex; align-items: center; gap: 4px; }
+      .sv-axes select { width: auto; }
+      .sv-cell { fill: var(--paper); stroke: var(--mute); stroke-width: 1; cursor: pointer; }
+      .sv-cell:hover { stroke: var(--ink); }
+      .sv-cell.sel { stroke: var(--ink); stroke-width: 2; }
+      .sv-cell-fill { fill: var(--red); pointer-events: none; }
+      .sv-axis { stroke: var(--ink); stroke-width: 1; }
+      .sv-thr { stroke: var(--red); stroke-width: 2; }
+      .sv-pc { fill: none; stroke-width: 1; }
+      .sv-pc.fail { stroke: var(--mute); stroke-opacity: 0.25; }
+      .sv-pc.pass { stroke: var(--red); stroke-opacity: 0.35; }
+      .has-sel .sv-pc { stroke-opacity: 0.06; }
+      .has-sel .sv-pc.on { stroke-opacity: 1; stroke-width: 1.5; }
       .sv-name { font: 10px var(--font); fill: var(--mute); }
       .probe-pct { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
       .probe-pct small { font-size: 16px; margin-left: 2px; letter-spacing: 0; }

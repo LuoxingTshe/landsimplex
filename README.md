@@ -2,7 +2,7 @@
 
 > **LandSimplex: A Simplex-Sampled Weight-Space Sensitivity Prototype for Raster-Based Landscape Suitability Analysis**
 >
-> **Beta 1.0.2** (`v1.0.2-beta.1`). Research software: single-user, local-only, APIs may still change. See [CHANGELOG.md](CHANGELOG.md).
+> **Beta 1.0.3** (`v1.0.3-beta.1`). Research software: single-user, local-only, APIs may still change. See [CHANGELOG.md](CHANGELOG.md).
 
 LandSimplex runs weighted linear combination (WLC) suitability analysis over the whole space of weight choices instead of one hand-picked weight vector. It samples the weight simplex on a uniform lattice, maps how often each pixel stays suitable, and lets you click any pixel to see *which* weight combinations make it pass.
 
@@ -21,7 +21,7 @@ LandSimplex runs weighted linear combination (WLC) suitability analysis over the
 | OpenLayers map with layer toggle + delete | Job persistence across server restarts |
 | Process-pool jobs with polled progress + per-result stats-driven rescale | |
 | Sentinel-2 / Landsat 8/9 bundle ingestion | |
-| **Pixel probe + weight-space simplex view**: click a pixel, see every lattice weight vector coloured pass/fail on a simplex (n = 2 segment, n = 3 triangle, n = 4 rotatable tetrahedron) with the lattice pass rate and a live threshold slider | Projection views for n = 5, 6 |
+| **Pixel probe + weight-space simplex view**: click a pixel, see every lattice weight vector coloured pass/fail on a simplex (n = 2 segment, n = 3 triangle, n = 4 rotatable tetrahedron, n = 5–6 merged projection + parallel coordinates) with the lattice pass rate and a live threshold slider | |
 | UI focused on one analysis: `WLC阈值概率密度` (threshold probability); every other algorithm stays in the backend, callable over the API | |
 | In-app Quit button that stops backend + frontend dev servers | |
 
@@ -71,7 +71,7 @@ Open <http://localhost:5173>. The **Quit** button at the top right of the sideba
 conda run -n landplan python scripts/make_wlc_sample.py
 ```
 
-This writes four 100×100 factor rasters in [0, 1] to `data/samples/wlc_test/` (gitignored): `A_east` (west→east gradient), `B_north` (south→north gradient), `C_center` (central bump) and `D_waves` (smooth checker of waves). Use A–C as `layer_0..2` for the triangle view, or all four as `layer_0..3` for the tetrahedron (see steps 3 and 5 below).
+This writes six 100×100 factor rasters in [0, 1] to `data/samples/wlc_test/` (gitignored): `A_east` (west→east gradient), `B_north` (south→north gradient), `C_center` (central bump), `D_waves` (smooth checker of waves), `E_ring` (ring around the centre) and `F_stripes` (diagonal stripes). Use A–C as `layer_0..2` for the triangle view, A–D for the tetrahedron, A–E or A–F for the projection view (see steps 3 and 5 below).
 
 **A real DEM** for slope / aspect / sun score (API only, see below). Two easy options:
 
@@ -90,7 +90,7 @@ The UI offers a single algorithm, **WLC阈值概率密度** (`threshold_probabil
 2. **Check one on the map.** Tick the checkbox. The map should zoom to the raster extent.
 3. **Run threshold probability density.** Choose 2–6 rasters (pre-normalised to 0-1) as layers → set `target_score` (e.g. 0.5). Toggle **单纯形采样** to set `T`; the live counter shows how many weight vectors are evaluated. Run. The job internally evaluates WLC for every lattice weight vector and writes a single [0,1] probability map, rendered with a cold→hot colormap (blue = low, red = high).
 4. **Constrain the simplex with per-component bounds.** With 单纯形采样 active, each weight row grows a `≥ [0] ≤ [1]` pair. Set e.g. `max[0] = 0.5`; the counter drops to the number of lattice points that survive (the backend's `POST /jobs/preview` returns the exact count). Bounds where `sum(min) > 1`, `sum(max) < 1`, any value outside `[0, 1]`, or where filtering eliminates every lattice point surface inline as red errors and block Run.
-5. **Probe a pixel in weight space.** Run on A–C (target 0.5, T = 10 → 66 weight vectors). In the raster list, click **◎** on the result: it becomes the probe target, loads on the map, and the cursor turns into a crosshair. Click the map. A red frame locks the pixel and the **Weight space** view at the top of the sidebar draws the triangle (A, B, C at the vertices): red squares are weight vectors whose score passes the threshold, hollow squares fail. The big number is the lattice pass rate, which equals the map value at that pixel (✓). For the synthetic data: centre ≈ 90.9 %, north-east corner ≈ 68.2 %, south-west corner 0 %. Hover a square for its weights and score; drag the threshold slider to re-evaluate instantly (the readout then notes it differs from the map). `Esc` clears the pixel; click ◎ again to stop probing. With four factors (A–D) the view is a tetrahedron: drag to rotate, double-click to reset; nearer points are larger, hidden edges dashed, min/max bounds drawn as a dashed wireframe. Two factors draw a segment; five or six show the readout only for now.
+5. **Probe a pixel in weight space.** Run on A–C (target 0.5, T = 10 → 66 weight vectors). In the raster list, click **◎** on the result: it becomes the probe target, loads on the map, and the cursor turns into a crosshair. Click the map. A red frame locks the pixel and the **Weight space** view at the top of the sidebar draws the triangle (A, B, C at the vertices): red squares are weight vectors whose score passes the threshold, hollow squares fail. The big number is the lattice pass rate, which equals the map value at that pixel (✓). For the synthetic data: centre ≈ 90.9 %, north-east corner ≈ 68.2 %, south-west corner 0 %. Hover a square for its weights and score; drag the threshold slider to re-evaluate instantly (the readout then notes it differs from the map). `Esc` clears the pixel; click ◎ again to stop probing. With four factors (A–D) the view is a tetrahedron: drag to rotate, double-click to reset; nearer points are larger, hidden edges dashed, min/max bounds drawn as a dashed wireframe. With five or six factors the view projects two chosen weights (Left / Right selects) plus the sum of the rest (top vertex) onto a triangle; weight vectors that land on the same spot share a cell whose red fill height is the share that passes. Below it, parallel coordinates draw every weight vector across the weight axes and a score axis (red tick = threshold); click a cell to highlight its vectors there, click empty space to clear. Two factors draw a segment.
 6. **Delete a layer.** Click the red ✕ button on any raster row in the side panel. The layer is removed from the map, the COG file is deleted from disk, and the catalogue record is removed.
 7. **Quit.** Click **Quit** (top right), confirm, and both servers shut down; running jobs are cancelled.
 
@@ -349,7 +349,7 @@ The tiled GTiff intermediate is always written window-by-window (no full-array c
 
 ## Known limitations (beta)
 
-- **Simplex geometry only for n ≤ 4.** Five or six factors show the numeric readout only; projection views (n = 5, 6) are planned.
+- **n = 5–6 is a projection.** Only two weights are shown exactly; the top vertex lumps the rest together, so cells can mix passing and failing vectors (that share is the red fill). Use the parallel coordinates for the full picture.
 - **Exact ties at the threshold.** The map is computed in float32, the probe in float64. A weight vector whose score lands exactly on the threshold (possible with coarse class scores like 0.2 / 0.4) can flip, so the probe rate may differ from the map by 1/N.
 - **Absolute paths in the catalogue.** `rasters.cog_path` stores absolute paths; moving the project directory breaks existing records (re-upload, or rewrite the path prefix in `metadata.sqlite`).
 - **Jobs are not persisted across restarts.** Quit or a crash cancels running jobs; the sidebar only lists jobs submitted in the current session.
